@@ -24,8 +24,12 @@ Caddy（自动 HTTPS）
 - 站点：归档时间线、全文搜索（jieba 中文分词）、RSS（中英双份）、sitemap、SEO meta/OG
 - 评论：Giscus（基于 GitHub Discussions，后台可配置，主题跟随深浅模式）
 - 统计：自建轻量 PV/UV 统计（按日去重），文章阅读量，后台 30 天趋势图表
+- AI 情报日报：内置多信源聚合管线（RSS/Atom + GitHub Trending → 指纹去重 → 关键词过滤 →
+  权重配额选稿 → LLM 双语整理），每日自动生成中英双语「AI 前沿日报」文章（分类 `ai-daily`），
+  主页「最新情报」与黄色滚动字幕展示最新一期重点条目
 - 后台 `/admin`：登录（argon2 + Session + 登录限流）、仪表盘、文章管理（CodeMirror 分屏编辑器、
-  图片粘贴/拖拽上传）、分类/标签/系列、友链、图片素材库、站点设置、备份管理（生成/恢复/上传/下载）
+  图片粘贴/拖拽上传）、情报管理（信源 CRUD/试抓/采集日志/条目审计/日报任务与 LLM 配置）、
+  分类/标签/系列、友链、图片素材库、站点设置、备份管理（生成/恢复/上传/下载）
 - 运维：Docker Compose（Caddy + Web + API + PostgreSQL）、备份脚本与后台共用 zip 格式（数据库 + 图片）
 
 ## 目录结构
@@ -139,6 +143,17 @@ uploads/
 | `BACKUP_KEEP` | 自动保留最近 N 份备份 | 7 |
 | `BACKUP_UPLOAD_MAX_MB` | 后台上传备份 zip 上限（MB） | 1024 |
 | `STATS_TZ_OFFSET_HOURS` | 统计时区偏移（北京=8） | 8 |
+| `NEWS_LLM_API_KEY` | AI 日报 LLM 的 API Key（OpenAI 兼容，不落库） | 空 |
+
+## AI 情报日报
+
+1. `.env` 配置 `NEWS_LLM_API_KEY`，重启 API
+2. 后台「情报管理」填写 LLM Base URL（如 `https://api.deepseek.com/v1`）与模型名，保存配置
+3. 点「立即采集全部」验证信源可用（预置 HN / GitHub Trending / arXiv / InfoQ / V2EX，可增删改）
+4. 点「生成今日日报」试跑；确认效果后把「定时任务总开关」设为开启
+5. 定时行为：默认每 2 小时采集一次，每日 08:00（站点时区）自动生成双语文章并发布；
+   当天失败不自动重试，可在任务列表查看错误后手动重新生成（覆盖同日文章，保留阅读量与评论）
+6. 数据保留：原始条目默认 30 天、采集日志 7 天，自动清理，阈值均可在后台调整
 
 ## Giscus 评论配置
 
