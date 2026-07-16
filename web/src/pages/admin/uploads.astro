@@ -134,7 +134,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
       .map(
         (row) => `
           <figure class="upload-item" style="margin:0">
-            <img class="upload-item__img" src="${escapeHtml(row.url)}" alt="" loading="lazy" />
+            <img class="upload-item__img" src="${escapeHtml(row.url)}" alt="" loading="lazy" decoding="async" />
             <figcaption class="upload-item__meta" title="${escapeHtml(row.original_name)}">
               ${escapeHtml(row.original_name)} · ${fmtSize(row.size_bytes)}
             </figcaption>

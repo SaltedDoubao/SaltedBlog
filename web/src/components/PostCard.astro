@@ -23,7 +23,7 @@ const artVariant = (post.id % 3) + 1;
     showMedia && (
       <a class="post-card__media" href={href} tabindex="-1" aria-hidden="true">
         {post.cover ? (
-          <img src={post.cover} alt="" loading="lazy" />
+          <img src={post.cover} alt="" loading="lazy" decoding="async" />
         ) : (
           <div class={`post-card__art post-card__art--${artVariant}`} />
         )}

@@ -34,7 +34,7 @@ const { items } = await getFriends();
               >
                 <span class="friend-card__index mono">{String(i + 1).padStart(2, '0')}</span>
                 {friend.avatar ? (
-                  <img class="friend-card__avatar" src={friend.avatar} alt="" loading="lazy" />
+                  <img class="friend-card__avatar" src={friend.avatar} alt="" loading="lazy" decoding="async" />
                 ) : (
                   <span class="friend-card__avatar friend-card__avatar--fallback">
                     {friend.name.slice(0, 1)}

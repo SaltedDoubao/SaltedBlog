@@ -89,7 +89,7 @@ const showToc = toc.length > 1;
             )
           }
 
-          {post.cover && <img class="post-cover" src={post.cover} alt={post.title} />}
+          {post.cover && <img class="post-cover" src={post.cover} alt={post.title} decoding="async" fetchpriority="high" />}
 
           <div class="prose" set:html={content_html} />
 
@@ -434,6 +434,12 @@ const showToc = toc.length > 1;
 
 <script>
   import hljs from 'highlight.js/lib/common';
+
+  // Markdown 正文图片默认延迟解码，避免长文一次性占用大量原生图片内存。
+  document.querySelectorAll<HTMLImageElement>('.prose img').forEach((image) => {
+    if (!image.hasAttribute('loading')) image.loading = 'lazy';
+    image.decoding = 'async';
+  });
 
   // 代码高亮 + 语言标识 + 复制按钮
   document.querySelectorAll<HTMLElement>('.prose pre code').forEach((block) => {
