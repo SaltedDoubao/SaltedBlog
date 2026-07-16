@@ -1,0 +1,369 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // ---- news_sources 信源配置 ----
+        manager
+            .create_table(
+                Table::create()
+                    .table(NewsSources::Table)
+                    .col(
+                        ColumnDef::new(NewsSources::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(NewsSources::Name).string_len(128).not_null())
+                    .col(ColumnDef::new(NewsSources::SourceType).string_len(32).not_null())
+                    .col(ColumnDef::new(NewsSources::Url).string_len(500).not_null())
+                    .col(ColumnDef::new(NewsSources::Category).string_len(64))
+                    .col(
+                        ColumnDef::new(NewsSources::Language)
+                            .string_len(8)
+                            .not_null()
+                            .default("zh"),
+                    )
+                    .col(ColumnDef::new(NewsSources::IncludeKeywords).text())
+                    .col(ColumnDef::new(NewsSources::ExcludeKeywords).text())
+                    .col(
+                        ColumnDef::new(NewsSources::MaxItems)
+                            .integer()
+                            .not_null()
+                            .default(30),
+                    )
+                    .col(
+                        ColumnDef::new(NewsSources::Enabled)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
+                        ColumnDef::new(NewsSources::SendToLlm)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
+                        ColumnDef::new(NewsSources::Weight)
+                            .double()
+                            .not_null()
+                            .default(1.0),
+                    )
+                    .col(ColumnDef::new(NewsSources::GithubLanguage).string_len(64))
+                    .col(ColumnDef::new(NewsSources::GithubSince).string_len(16))
+                    .col(ColumnDef::new(NewsSources::MinStars).integer())
+                    .col(
+                        ColumnDef::new(NewsSources::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(NewsSources::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        // ---- news_items 原始条目 ----
+        manager
+            .create_table(
+                Table::create()
+                    .table(NewsItems::Table)
+                    .col(
+                        ColumnDef::new(NewsItems::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(NewsItems::SourceId).integer().not_null())
+                    .col(ColumnDef::new(NewsItems::Title).string_len(500).not_null())
+                    .col(ColumnDef::new(NewsItems::Url).string_len(1000))
+                    .col(ColumnDef::new(NewsItems::Summary).text())
+                    .col(ColumnDef::new(NewsItems::Content).text())
+                    .col(ColumnDef::new(NewsItems::Author).string_len(200))
+                    .col(ColumnDef::new(NewsItems::PublishedAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(NewsItems::FetchedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(NewsItems::ExtraJson).text())
+                    .col(ColumnDef::new(NewsItems::DedupKey).string_len(200).not_null())
+                    .col(ColumnDef::new(NewsItems::UrlHash).string_len(64))
+                    .col(ColumnDef::new(NewsItems::TitleHash).string_len(64))
+                    .col(ColumnDef::new(NewsItems::ContentHash).string_len(64))
+                    .col(ColumnDef::new(NewsItems::Status).string_len(16).not_null())
+                    .col(ColumnDef::new(NewsItems::FilterReason).string_len(64))
+                    .col(ColumnDef::new(NewsItems::MatchedKeywords).text())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("uq_news_items_dedup_key")
+                    .table(NewsItems::Table)
+                    .col(NewsItems::DedupKey)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_news_items_url_hash")
+                    .table(NewsItems::Table)
+                    .col(NewsItems::UrlHash)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_news_items_source_title")
+                    .table(NewsItems::Table)
+                    .col(NewsItems::SourceId)
+                    .col(NewsItems::TitleHash)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_news_items_content_hash")
+                    .table(NewsItems::Table)
+                    .col(NewsItems::ContentHash)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_news_items_status_fetched")
+                    .table(NewsItems::Table)
+                    .col(NewsItems::Status)
+                    .col(NewsItems::FetchedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        // ---- news_fetch_logs 采集日志 ----
+        manager
+            .create_table(
+                Table::create()
+                    .table(NewsFetchLogs::Table)
+                    .col(
+                        ColumnDef::new(NewsFetchLogs::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(NewsFetchLogs::SourceId).integer().not_null())
+                    .col(ColumnDef::new(NewsFetchLogs::Status).string_len(16).not_null())
+                    .col(
+                        ColumnDef::new(NewsFetchLogs::FetchedCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(NewsFetchLogs::NewCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(NewsFetchLogs::DuplicateCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(NewsFetchLogs::ExcludedCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(ColumnDef::new(NewsFetchLogs::HttpStatus).integer())
+                    .col(ColumnDef::new(NewsFetchLogs::ErrorMessage).text())
+                    .col(
+                        ColumnDef::new(NewsFetchLogs::StartedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(NewsFetchLogs::FinishedAt).timestamp_with_time_zone())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_news_fetch_logs_started")
+                    .table(NewsFetchLogs::Table)
+                    .col(NewsFetchLogs::StartedAt)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_news_fetch_logs_source")
+                    .table(NewsFetchLogs::Table)
+                    .col(NewsFetchLogs::SourceId)
+                    .to_owned(),
+            )
+            .await?;
+
+        // ---- digest_jobs 日报任务 ----
+        manager
+            .create_table(
+                Table::create()
+                    .table(DigestJobs::Table)
+                    .col(
+                        ColumnDef::new(DigestJobs::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(DigestJobs::DigestDate).string_len(10).not_null())
+                    .col(ColumnDef::new(DigestJobs::Trigger).string_len(16).not_null())
+                    .col(ColumnDef::new(DigestJobs::Status).string_len(16).not_null())
+                    .col(
+                        ColumnDef::new(DigestJobs::RawCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(DigestJobs::SelectedCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(ColumnDef::new(DigestJobs::ErrorMessage).text())
+                    .col(ColumnDef::new(DigestJobs::LlmModel).string_len(128))
+                    .col(ColumnDef::new(DigestJobs::ResultJson).text())
+                    .col(ColumnDef::new(DigestJobs::PostIdZh).integer())
+                    .col(ColumnDef::new(DigestJobs::PostIdEn).integer())
+                    .col(
+                        ColumnDef::new(DigestJobs::StartedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(DigestJobs::FinishedAt).timestamp_with_time_zone())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_digest_jobs_date")
+                    .table(DigestJobs::Table)
+                    .col(DigestJobs::DigestDate)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        for table in [
+            Table::drop().table(DigestJobs::Table).to_owned(),
+            Table::drop().table(NewsFetchLogs::Table).to_owned(),
+            Table::drop().table(NewsItems::Table).to_owned(),
+            Table::drop().table(NewsSources::Table).to_owned(),
+        ] {
+            manager.drop_table(table).await?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(DeriveIden)]
+enum NewsSources {
+    Table,
+    Id,
+    Name,
+    SourceType,
+    Url,
+    Category,
+    Language,
+    IncludeKeywords,
+    ExcludeKeywords,
+    MaxItems,
+    Enabled,
+    SendToLlm,
+    Weight,
+    GithubLanguage,
+    GithubSince,
+    MinStars,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum NewsItems {
+    Table,
+    Id,
+    SourceId,
+    Title,
+    Url,
+    Summary,
+    Content,
+    Author,
+    PublishedAt,
+    FetchedAt,
+    ExtraJson,
+    DedupKey,
+    UrlHash,
+    TitleHash,
+    ContentHash,
+    Status,
+    FilterReason,
+    MatchedKeywords,
+}
+
+#[derive(DeriveIden)]
+enum NewsFetchLogs {
+    Table,
+    Id,
+    SourceId,
+    Status,
+    FetchedCount,
+    NewCount,
+    DuplicateCount,
+    ExcludedCount,
+    HttpStatus,
+    ErrorMessage,
+    StartedAt,
+    FinishedAt,
+}
+
+#[derive(DeriveIden)]
+enum DigestJobs {
+    Table,
+    Id,
+    DigestDate,
+    Trigger,
+    Status,
+    RawCount,
+    SelectedCount,
+    ErrorMessage,
+    LlmModel,
+    ResultJson,
+    PostIdZh,
+    PostIdEn,
+    StartedAt,
+    FinishedAt,
+}

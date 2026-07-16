@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::entities::{post_tags, posts, tags};
 use crate::error::{ApiError, ApiResult};
-use crate::render::{build_search_text, render_markdown, sanitize_slug};
+use crate::render::{prepare_post_content, render_markdown, sanitize_slug};
 use crate::routes::dto::{hydrate_posts, validate_lang};
 use crate::state::AppState;
 
@@ -163,10 +163,6 @@ async fn prepare(state: &AppState, input: &PostInput) -> ApiResult<PreparedPost>
         slug = Uuid::new_v4().simple().to_string()[..8].to_string();
     }
 
-    let rendered = render_markdown(&input.content_md);
-    let toc_json =
-        serde_json::to_string(&rendered.toc).map_err(|e| ApiError::internal(e.to_string()))?;
-
     // 标签名参与搜索
     let tag_names: Vec<String> = if input.tag_ids.is_empty() {
         Vec::new()
@@ -179,16 +175,16 @@ async fn prepare(state: &AppState, input: &PostInput) -> ApiResult<PreparedPost>
             .flat_map(|t| [t.name_zh, t.name_en])
             .collect()
     };
-    let mut parts: Vec<&str> = vec![input.title.as_str()];
-    parts.extend(tag_names.iter().map(|s| s.as_str()));
-    parts.push(rendered.plain.as_str());
-    let search_text = build_search_text(&state.jieba, &parts);
+    let tag_refs: Vec<&str> = tag_names.iter().map(|s| s.as_str()).collect();
+    let content =
+        prepare_post_content(&state.jieba, input.title.as_str(), &tag_refs, &input.content_md)
+            .map_err(|e| ApiError::internal(e.to_string()))?;
 
     Ok(PreparedPost {
         slug,
-        html: rendered.html,
-        toc_json,
-        search_text,
+        html: content.html,
+        toc_json: content.toc_json,
+        search_text: content.search_text,
     })
 }
 

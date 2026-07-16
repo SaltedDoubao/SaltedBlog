@@ -74,6 +74,33 @@ pub fn render_markdown(md: &str) -> Rendered {
     Rendered { html, toc, plain }
 }
 
+/// 文章内容三件套：HTML、TOC JSON、搜索文本（供后台编辑与日报生成共用）
+pub struct PostContent {
+    pub html: String,
+    pub toc_json: String,
+    pub search_text: String,
+}
+
+/// 渲染 Markdown 并组装文章所需的派生字段
+pub fn prepare_post_content(
+    jieba: &Jieba,
+    title: &str,
+    extra_terms: &[&str],
+    markdown: &str,
+) -> Result<PostContent, serde_json::Error> {
+    let rendered = render_markdown(markdown);
+    let toc_json = serde_json::to_string(&rendered.toc)?;
+    let mut parts: Vec<&str> = vec![title];
+    parts.extend_from_slice(extra_terms);
+    parts.push(rendered.plain.as_str());
+    let search_text = build_search_text(jieba, &parts);
+    Ok(PostContent {
+        html: rendered.html,
+        toc_json,
+        search_text,
+    })
+}
+
 /// 组装搜索文本：标题 + 标签名 + 正文纯文本，jieba 搜索引擎模式分词，小写化
 pub fn build_search_text(jieba: &Jieba, parts: &[&str]) -> String {
     let joined = parts.join(" ");

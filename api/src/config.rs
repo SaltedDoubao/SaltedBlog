@@ -14,6 +14,8 @@ pub struct Config {
     pub backup_dir: PathBuf,
     pub backup_keep: usize,
     pub backup_upload_max_mb: usize,
+    /// LLM API Key（敏感信息仅走环境变量，不落库）
+    pub news_llm_api_key: String,
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -35,6 +37,7 @@ impl Config {
             backup_dir: PathBuf::from(env_or("BACKUP_DIR", "backups")),
             backup_keep: env_or("BACKUP_KEEP", "7").parse().unwrap_or(7),
             backup_upload_max_mb: env_or("BACKUP_UPLOAD_MAX_MB", "1024").parse().unwrap_or(1024),
+            news_llm_api_key: env_or("NEWS_LLM_API_KEY", ""),
         }
     }
 }

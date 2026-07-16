@@ -3,6 +3,7 @@ mod backup;
 mod config;
 mod entities;
 mod error;
+mod news;
 mod render;
 mod routes;
 mod state;
@@ -30,6 +31,9 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
 
+    // reqwest 以 rustls-no-provider 构建，需在进程级安装 ring 作为默认 crypto provider
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let cfg = Config::from_env();
 
     // SQLite：确保数据库文件所在目录存在
@@ -54,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
 
     bootstrap_admin(&db, &cfg).await?;
     seed_settings(&db).await?;
+    news::seed::seed_defaults(&db).await?;
 
     let state = Arc::new(AppStateInner::new(
         db,
@@ -61,6 +66,8 @@ async fn main() -> anyhow::Result<()> {
         jieba_rs::Jieba::new(),
         LoginLimiter::new(),
     ));
+
+    news::scheduler::spawn(state.clone());
 
     let app = routes::build_router(state.clone());
     let listener = tokio::net::TcpListener::bind(&state.cfg.bind_addr).await?;
@@ -112,8 +119,8 @@ async fn seed_settings(db: &sea_orm::DatabaseConnection) -> anyhow::Result<()> {
         ("home_eyebrow_en", "PERSONAL BLOG / OVER THE FRONTIER"),
         ("home_news_title_zh", "最新情报"),
         ("home_news_title_en", "Latest Intelligence"),
-        ("home_news_description_zh", "按时间顺序接收来自技术与生活前线的最新记录。"),
-        ("home_news_description_en", "Fresh signals from the frontiers of technology and life, ordered by time."),
+        ("home_news_description_zh", "由 AI 情报管线每日聚合的前沿信号，点击进入完整日报。"),
+        ("home_news_description_en", "Frontier signals aggregated daily by the AI intel pipeline. Open the full digest."),
         ("home_world_title_zh", "内容疆域"),
         ("home_world_title_en", "Content Frontier"),
         ("home_world_description_zh", "沿分类、系列与时间坐标进入博客的不同区域。"),
@@ -140,6 +147,16 @@ async fn seed_settings(db: &sea_orm::DatabaseConnection) -> anyhow::Result<()> {
         ("icp", ""),
         ("about_zh", "# 关于我\n\n这里还没有内容，请在后台「站点设置」中编辑。"),
         ("about_en", "# About\n\nNothing here yet. Edit it in admin settings."),
+        // ---- AI 情报聚合（news_ 前缀不进公开接口）----
+        ("news_enabled", "false"),
+        ("news_fetch_interval_hours", "2"),
+        ("news_digest_time", "08:00"),
+        ("news_digest_auto_publish", "true"),
+        ("news_llm_base_url", ""),
+        ("news_llm_model", ""),
+        ("news_llm_extra_prompt", ""),
+        ("news_retention_days", "30"),
+        ("news_log_retention_days", "7"),
     ];
     for (key, value) in defaults {
         let existing = entities::settings::Entity::find_by_id((*key).to_string())

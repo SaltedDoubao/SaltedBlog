@@ -38,6 +38,18 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 walkdir = "2"
 fs2 = "0.4"
 tokio-util = { version = "0.7", features = ["io"] }
+feed-rs = "2.4.0"
+scraper = "0.27.0"
+url = "2.5.8"
+# rustls-no-provider + 显式 ring：避免默认 aws-lc 后端引入 cmake/nasm 原生构建依赖
+reqwest = { version = "0.13", default-features = false, features = [
+    "rustls-no-provider",
+    "http2",
+    "json",
+    "gzip",
+    "charset",
+] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 
 [profile.release]
 lto = "thin"

@@ -1,5 +1,6 @@
 pub mod admin_backup;
 pub mod admin_misc;
+pub mod admin_news;
 pub mod admin_posts;
 pub mod admin_taxonomy;
 pub mod auth;
@@ -19,6 +20,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(admin_posts::router())
         .merge(admin_taxonomy::router())
         .merge(admin_misc::router())
+        .merge(admin_news::router())
         .merge(admin_backup::router(state.cfg.backup_upload_max_mb))
         .layer(middleware::from_fn_with_state(
             state.clone(),

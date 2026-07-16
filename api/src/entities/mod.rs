@@ -1,5 +1,9 @@
 pub mod categories;
+pub mod digest_jobs;
 pub mod friends;
+pub mod news_fetch_logs;
+pub mod news_items;
+pub mod news_sources;
 pub mod page_views;
 pub mod post_tags;
 pub mod posts;

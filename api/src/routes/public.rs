@@ -15,8 +15,11 @@ use serde::Deserialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use crate::entities::{categories, friends, page_views, post_tags, posts, series, settings, tags};
+use crate::entities::{
+    categories, digest_jobs, friends, page_views, post_tags, posts, series, settings, tags,
+};
 use crate::error::{ApiError, ApiResult};
+use crate::news::llm::DigestDoc;
 use crate::render::{render_markdown, tokenize_query};
 use crate::routes::dto::{hydrate_posts, validate_lang, CategoryOut, SeriesOut, TagOut};
 use crate::state::AppState;
@@ -32,6 +35,7 @@ pub fn router() -> Router<AppState> {
         .route("/settings/public", get(public_settings))
         .route("/about", get(about_page))
         .route("/sitemap", get(sitemap_data))
+        .route("/news/latest", get(latest_digest))
         .route("/track", post(track))
 }
 
@@ -381,11 +385,23 @@ async fn list_friends(State(state): State<AppState>) -> ApiResult<impl IntoRespo
     Ok(Json(json!({ "items": items })))
 }
 
+/// 公开设置白名单：仅前台展示所需的键，避免暴露 LLM/采集等内部配置
+const PUBLIC_SETTING_PREFIXES: &[&str] = &["site_", "home_", "description_", "giscus_", "social_"];
+const PUBLIC_SETTING_KEYS: &[&str] = &["author", "icp"];
+
+fn is_public_setting(key: &str) -> bool {
+    PUBLIC_SETTING_KEYS.contains(&key)
+        || PUBLIC_SETTING_PREFIXES
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+}
+
 async fn public_settings(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let map: HashMap<String, String> = settings::Entity::find()
         .all(&state.db())
         .await?
         .into_iter()
+        .filter(|s| is_public_setting(&s.key))
         .map(|s| (s.key, s.value))
         .collect();
     Ok(Json(json!(map)))
@@ -404,6 +420,52 @@ async fn about_page(
         .unwrap_or_default();
     let rendered = render_markdown(&md);
     Ok(Json(json!({ "html": rendered.html, "toc": rendered.toc })))
+}
+
+// ---------- 最新日报（主页「最新情报」与滚动字幕数据源） ----------
+
+/// 返回最新一期「生成成功且中文文章已发布」的日报；不存在时 digest 为 null
+async fn latest_digest(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let jobs = digest_jobs::Entity::find()
+        .filter(digest_jobs::Column::Status.eq(digest_jobs::STATUS_SUCCESS))
+        .order_by_desc(digest_jobs::Column::DigestDate)
+        .order_by_desc(digest_jobs::Column::Id)
+        .limit(10)
+        .all(&state.db())
+        .await?;
+
+    for job in jobs {
+        let Some(raw) = job.result_json.as_deref() else {
+            continue;
+        };
+        let Ok(doc) = serde_json::from_str::<DigestDoc>(raw) else {
+            continue;
+        };
+        let Some(post_id) = job.post_id_zh else {
+            continue;
+        };
+        let Some(post) = posts::Entity::find_by_id(post_id).one(&state.db()).await? else {
+            continue;
+        };
+        if post.status != posts::STATUS_PUBLISHED {
+            continue;
+        }
+        let items = doc.items_by_importance();
+        return Ok(Json(json!({
+            "digest": {
+                "date": job.digest_date,
+                "slug": post.slug,
+                "title_zh": doc.title_zh,
+                "title_en": doc.title_en,
+                "summary_zh": doc.summary_zh,
+                "summary_en": doc.summary_en,
+                "item_count": doc.item_count(),
+                "generated_at": job.finished_at,
+                "items": items,
+            }
+        })));
+    }
+    Ok(Json(json!({ "digest": null })))
 }
 
 // ---------- sitemap 数据 ----------
