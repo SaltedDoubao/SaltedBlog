@@ -1,0 +1,167 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { searchPosts } from '@/lib/api';
+import { formatDate, localName, localePath, t, type Lang } from '@/i18n';
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const q = (Astro.url.searchParams.get('q') ?? '').trim();
+const result = q ? await searchPosts(lang, q) : null;
+---
+
+<BaseLayout lang={lang} title={t(lang, 'search.title')}>
+  <section class="page-section">
+    <div class="watermark" aria-hidden="true">SEARCH</div>
+    <div class="container">
+      <header class="section-heading rise-in">
+        <span class="section-heading__eyebrow">{t(lang, 'search.eyebrow')}</span>
+        <h1 class="section-heading__title">{t(lang, 'search.title')}</h1>
+      </header>
+
+      <form class="search-form" method="get" action={localePath(lang, '/search')}>
+        <input
+          class="input search-form__input"
+          type="search"
+          name="q"
+          value={q}
+          placeholder={t(lang, 'search.placeholder')}
+          autocomplete="off"
+          autofocus
+        />
+        <button class="btn btn--primary" type="submit">{t(lang, 'nav.search')}</button>
+      </form>
+
+      {
+        result && (
+          <div class="search-results">
+            <div class="search-results__count mono">
+              "{result.q}" / {String(result.items.length).padStart(2, '0')} {t(lang, 'search.result')}
+            </div>
+            {result.items.length === 0 ? (
+              <div class="empty-state mono">NO SIGNAL / {t(lang, 'search.empty')}</div>
+            ) : (
+              <ol class="search-list">
+                {result.items.map((post, i) => (
+                  <li>
+                    <a class="search-item" href={localePath(lang, `/posts/${post.slug}`)}>
+                      <span class="search-item__index mono">{String(i + 1).padStart(2, '0')}</span>
+                      <span class="search-item__main">
+                        <b>{post.title}</b>
+                        {post.summary && <small>{post.summary}</small>}
+                      </span>
+                      <span class="search-item__meta mono">
+                        {formatDate(lang, post.published_at)}
+                        {post.category && ` / ${localName(lang, post.category)}`}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )
+      }
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-section {
+    position: relative;
+    padding: var(--space-20) 0;
+    overflow: hidden;
+    min-height: 60vh;
+  }
+
+  .search-form {
+    display: flex;
+    gap: var(--space-3);
+    max-width: 640px;
+  }
+
+  .search-form__input {
+    flex: 1;
+  }
+
+  .search-results {
+    margin-top: var(--space-12);
+    max-width: 860px;
+  }
+
+  .search-results__count {
+    margin-bottom: var(--space-5);
+    font-size: 11px;
+    color: var(--text-3);
+  }
+
+  .search-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .search-item {
+    display: grid;
+    grid-template-columns: 36px 1fr auto;
+    gap: var(--space-4);
+    align-items: baseline;
+    padding: var(--space-4) var(--space-2);
+    border-bottom: 1px solid var(--border);
+    text-decoration: none;
+    color: var(--text);
+    transition: background-color var(--duration-fast) var(--ease);
+  }
+
+  .search-item:hover {
+    background: var(--surface);
+  }
+
+  .search-item__index {
+    font-size: 11px;
+    color: var(--accent-text);
+  }
+
+  .search-item__main {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .search-item__main b {
+    font-size: 16px;
+  }
+
+  .search-item:hover .search-item__main b {
+    background: var(--primary);
+    color: var(--black);
+    width: fit-content;
+  }
+
+  .search-item__main small {
+    font-size: 13px;
+    color: var(--text-2);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .search-item__meta {
+    font-size: 9px;
+    color: var(--text-3);
+  }
+
+  @media (max-width: 560px) {
+    .search-item {
+      grid-template-columns: 1fr;
+      gap: var(--space-1);
+    }
+    .search-item__index {
+      display: none;
+    }
+  }
+</style>

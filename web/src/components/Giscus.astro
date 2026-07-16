@@ -1,0 +1,87 @@
+---
+import type { SettingsMap } from '@/lib/api';
+import { t, type Lang } from '@/i18n';
+
+interface Props {
+  lang: Lang;
+  settings: SettingsMap;
+}
+
+const { lang, settings } = Astro.props;
+const repo = settings.giscus_repo;
+const repoId = settings.giscus_repo_id;
+const category = settings.giscus_category;
+const categoryId = settings.giscus_category_id;
+const enabled = Boolean(repo && repoId);
+---
+
+{
+  enabled && (
+    <section class="comments">
+      <header class="comments__heading">
+        <span class="mono">COMMENTS / GISCUS</span>
+        <h2>{t(lang, 'comments.title')}</h2>
+      </header>
+      <div
+        id="giscusMount"
+        data-repo={repo}
+        data-repo-id={repoId}
+        data-category={category}
+        data-category-id={categoryId}
+        data-lang={lang === 'zh' ? 'zh-CN' : 'en'}
+      />
+    </section>
+  )
+}
+
+<style>
+  .comments {
+    margin-top: var(--space-16);
+    padding-top: var(--space-8);
+    border-top: 1px solid var(--border);
+  }
+
+  .comments__heading {
+    margin-bottom: var(--space-6);
+  }
+
+  .comments__heading span {
+    font-size: 10px;
+    color: var(--text-3);
+  }
+
+  .comments__heading h2 {
+    margin: 4px 0 0;
+    font-size: 24px;
+    font-weight: 900;
+  }
+</style>
+
+<script is:inline>
+  (function () {
+    var mount = document.getElementById('giscusMount');
+    if (!mount) return;
+    var theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+    var script = document.createElement('script');
+    script.src = 'https://giscus.app/client.js';
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    var attrs = {
+      'data-repo': mount.dataset.repo,
+      'data-repo-id': mount.dataset.repoId,
+      'data-category': mount.dataset.category || '',
+      'data-category-id': mount.dataset.categoryId || '',
+      'data-mapping': 'pathname',
+      'data-strict': '0',
+      'data-reactions-enabled': '1',
+      'data-emit-metadata': '0',
+      'data-input-position': 'top',
+      'data-theme': theme,
+      'data-lang': mount.dataset.lang || 'zh-CN',
+    };
+    Object.keys(attrs).forEach(function (key) {
+      script.setAttribute(key, attrs[key]);
+    });
+    mount.appendChild(script);
+  })();
+</script>

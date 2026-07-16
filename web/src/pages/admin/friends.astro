@@ -1,0 +1,173 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="友情链接" eyebrow="FRIENDS / MANAGE" active="friends">
+  <button slot="actions" class="btn btn--primary btn--sm" id="newBtn" type="button">+ 新增友链</button>
+
+  <div class="admin-panel">
+    <div class="admin-panel__body" id="friendForm" hidden>
+      <div class="form-grid">
+        <div class="form-field">
+          <label class="label">名称 *</label>
+          <input class="input" data-field="name" />
+        </div>
+        <div class="form-field">
+          <label class="label">链接 URL *</label>
+          <input class="input" data-field="url" placeholder="https://…" />
+        </div>
+        <div class="form-field">
+          <label class="label">头像 URL</label>
+          <input class="input" data-field="avatar" placeholder="https://… 或 /uploads/…" />
+        </div>
+        <div class="form-field">
+          <label class="label">排序（小的在前）</label>
+          <input class="input" data-field="sort_order" type="number" value="0" />
+        </div>
+        <div class="form-field form-field--full">
+          <label class="label">描述</label>
+          <input class="input" data-field="description" />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--primary btn--sm" id="saveBtn" type="button">保存</button>
+        <button class="btn btn--sm" id="cancelBtn" type="button">取消</button>
+      </div>
+    </div>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th style="width:48px">ID</th>
+          <th>名称</th>
+          <th>URL</th>
+          <th>描述</th>
+          <th style="width:64px">排序</th>
+          <th style="width:140px">操作</th>
+        </tr>
+      </thead>
+      <tbody id="friendsBody">
+        <tr><td colspan="6" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</AdminLayout>
+
+<script>
+  import { adminFetch, confirmDanger, escapeHtml, toast } from '@/lib/admin-client';
+
+  interface Friend {
+    id: number;
+    name: string;
+    url: string;
+    avatar: string | null;
+    description: string | null;
+    sort_order: number;
+  }
+
+  const form = document.getElementById('friendForm')!;
+  const tbody = document.getElementById('friendsBody')!;
+  let editingId: number | null = null;
+  let rows: Friend[] = [];
+
+  const field = (name: string) => form.querySelector<HTMLInputElement>(`[data-field="${name}"]`)!;
+
+  function openForm(row?: Friend) {
+    editingId = row?.id ?? null;
+    field('name').value = row?.name ?? '';
+    field('url').value = row?.url ?? '';
+    field('avatar').value = row?.avatar ?? '';
+    field('description').value = row?.description ?? '';
+    field('sort_order').value = String(row?.sort_order ?? 0);
+    form.hidden = false;
+    field('name').focus();
+  }
+
+  async function load() {
+    try {
+      const res = await adminFetch<{ items: Friend[] }>('/api/admin/friends');
+      rows = res.items;
+    } catch (err) {
+      toast(`加载失败：${(err as Error).message}`, 'error');
+      return;
+    }
+    if (rows.length === 0) {
+      tbody.innerHTML =
+        '<tr><td colspan="6" style="text-align:center;color:var(--text-3)">暂无友链</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows
+      .map(
+        (row) => `
+          <tr>
+            <td class="mono">${row.id}</td>
+            <td style="font-weight:600">${escapeHtml(row.name)}</td>
+            <td><a href="${escapeHtml(row.url)}" target="_blank" style="color:var(--accent-text)">${escapeHtml(row.url)}</a></td>
+            <td>${row.description ? escapeHtml(row.description) : '<span style="color:var(--text-3)">—</span>'}</td>
+            <td class="mono">${row.sort_order}</td>
+            <td>
+              <div class="cell-actions">
+                <button class="btn btn--sm" data-edit="${row.id}" type="button">编辑</button>
+                <button class="btn btn--sm btn--danger" data-del="${row.id}" type="button">删除</button>
+              </div>
+            </td>
+          </tr>`
+      )
+      .join('');
+
+    tbody.querySelectorAll<HTMLButtonElement>('[data-edit]').forEach((btn) =>
+      btn.addEventListener('click', () => {
+        const row = rows.find((r) => r.id === Number(btn.dataset.edit));
+        if (row) openForm(row);
+      })
+    );
+    tbody.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        if (!confirmDanger('确认删除该友链？')) return;
+        try {
+          await adminFetch(`/api/admin/friends/${btn.dataset.del}`, { method: 'DELETE' });
+          toast('已删除');
+          load();
+        } catch (err) {
+          toast(`删除失败：${(err as Error).message}`, 'error');
+        }
+      })
+    );
+  }
+
+  document.getElementById('newBtn')!.addEventListener('click', () => openForm());
+  document.getElementById('cancelBtn')!.addEventListener('click', () => {
+    form.hidden = true;
+    editingId = null;
+  });
+  document.getElementById('saveBtn')!.addEventListener('click', async () => {
+    const payload = {
+      name: field('name').value.trim(),
+      url: field('url').value.trim(),
+      avatar: field('avatar').value.trim() || null,
+      description: field('description').value.trim() || null,
+      sort_order: Number(field('sort_order').value) || 0,
+    };
+    if (!payload.name || !payload.url) {
+      toast('名称与 URL 必填', 'error');
+      return;
+    }
+    try {
+      if (editingId) {
+        await adminFetch(`/api/admin/friends/${editingId}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await adminFetch('/api/admin/friends', { method: 'POST', body: JSON.stringify(payload) });
+      }
+      toast('已保存');
+      form.hidden = true;
+      editingId = null;
+      load();
+    } catch (err) {
+      toast(`保存失败：${(err as Error).message}`, 'error');
+    }
+  });
+
+  load();
+</script>

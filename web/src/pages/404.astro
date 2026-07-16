@@ -1,0 +1,49 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { t, type Lang } from '@/i18n';
+
+const lang: Lang = Astro.url.pathname.startsWith('/en') ? 'en' : 'zh';
+---
+
+<BaseLayout lang={lang} title="404" hasAlt={false}>
+  <section class="nf">
+    <div class="container nf__inner">
+      <div class="nf__code mono">ERROR / SIGNAL LOST</div>
+      <h1 class="nf__title">404</h1>
+      <p class="nf__desc">{t(lang, 'notfound.desc')}</p>
+      <a class="btn btn--primary btn--cut" href={lang === 'zh' ? '/' : '/en'}>
+        {t(lang, 'notfound.back')} ↘
+      </a>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .nf {
+    min-height: 62vh;
+    display: grid;
+    place-items: center;
+    text-align: center;
+  }
+
+  .nf__code {
+    font-size: 11px;
+    color: var(--danger);
+  }
+
+  .nf__title {
+    margin: var(--space-2) 0 var(--space-4);
+    font-family: var(--font-display);
+    font-size: clamp(96px, 18vw, 200px);
+    line-height: 0.9;
+    font-weight: 700;
+    letter-spacing: -0.05em;
+    color: transparent;
+    -webkit-text-stroke: 2px var(--text);
+  }
+
+  .nf__desc {
+    margin: 0 0 var(--space-8);
+    color: var(--text-2);
+  }
+</style>

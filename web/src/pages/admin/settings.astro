@@ -1,0 +1,111 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+
+const groups = [
+  {
+    title: 'SITE / 站点信息',
+    fields: [
+      { key: 'site_title_zh', label: '站点标题（中文）', type: 'input' },
+      { key: 'site_title_en', label: '站点标题（英文）', type: 'input' },
+      { key: 'description_zh', label: '站点描述（中文）', type: 'input' },
+      { key: 'description_en', label: '站点描述（英文）', type: 'input' },
+      { key: 'author', label: '作者名', type: 'input' },
+      { key: 'icp', label: 'ICP 备案号（可空）', type: 'input' },
+    ],
+  },
+  {
+    title: 'SOCIAL / 社交链接',
+    fields: [
+      { key: 'social_github', label: 'GitHub 主页 URL', type: 'input' },
+      { key: 'social_email', label: '联系邮箱', type: 'input' },
+    ],
+  },
+  {
+    title: 'GISCUS / 评论系统（github.com/giscus/giscus 获取参数）',
+    fields: [
+      { key: 'giscus_repo', label: '仓库（owner/repo）', type: 'input' },
+      { key: 'giscus_repo_id', label: 'Repo ID', type: 'input' },
+      { key: 'giscus_category', label: 'Discussion 分类名', type: 'input' },
+      { key: 'giscus_category_id', label: 'Category ID', type: 'input' },
+    ],
+  },
+  {
+    title: 'ABOUT / 关于页内容（Markdown）',
+    fields: [
+      { key: 'about_zh', label: '关于页（中文）', type: 'textarea' },
+      { key: 'about_en', label: '关于页（英文）', type: 'textarea' },
+    ],
+  },
+];
+---
+
+<AdminLayout title="站点设置" eyebrow="SETTINGS / CONFIG" active="settings">
+  <button slot="actions" class="btn btn--primary btn--sm" id="saveBtn" type="button">
+    保存全部设置
+  </button>
+
+  {
+    groups.map((group) => (
+      <div class="admin-panel">
+        <div class="admin-panel__head">
+          <span>{group.title}</span>
+        </div>
+        <div class="admin-panel__body">
+          <div class="form-grid">
+            {group.fields.map((field) => (
+              <div class:list={['form-field', { 'form-field--full': field.type === 'textarea' }]}>
+                <label class="label" for={`setting-${field.key}`}>
+                  {field.label}
+                </label>
+                {field.type === 'textarea' ? (
+                  <textarea
+                    class="textarea"
+                    id={`setting-${field.key}`}
+                    data-setting={field.key}
+                    rows="10"
+                  />
+                ) : (
+                  <input class="input" id={`setting-${field.key}`} data-setting={field.key} />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    ))
+  }
+</AdminLayout>
+
+<script>
+  import { adminFetch, toast } from '@/lib/admin-client';
+
+  const inputs = Array.from(
+    document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-setting]')
+  );
+
+  async function load() {
+    try {
+      const settings = await adminFetch<Record<string, string>>('/api/admin/settings');
+      for (const el of inputs) {
+        el.value = settings[el.dataset.setting!] ?? '';
+      }
+    } catch (err) {
+      toast(`加载失败：${(err as Error).message}`, 'error');
+    }
+  }
+
+  document.getElementById('saveBtn')!.addEventListener('click', async () => {
+    const payload: Record<string, string> = {};
+    for (const el of inputs) {
+      payload[el.dataset.setting!] = el.value;
+    }
+    try {
+      await adminFetch('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });
+      toast('设置已保存（前台约 1 分钟后生效）');
+    } catch (err) {
+      toast(`保存失败：${(err as Error).message}`, 'error');
+    }
+  });
+
+  load();
+</script>

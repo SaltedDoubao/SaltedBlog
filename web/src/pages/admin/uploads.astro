@@ -1,0 +1,208 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="图片素材" eyebrow="UPLOADS / ASSETS" active="uploads">
+  <button slot="actions" class="btn btn--primary btn--sm" id="uploadBtn" type="button">
+    + 上传图片
+  </button>
+
+  <div class="admin-panel">
+    <div class="admin-panel__head">
+      <span>ASSETS / 已上传文件</span>
+      <span class="mono" id="uploadCount"></span>
+    </div>
+    <div class="admin-panel__body">
+      <div class="upload-grid" id="uploadGrid">
+        <div style="color:var(--text-3)">加载中…</div>
+      </div>
+      <div class="list-pager" style="margin-top:16px">
+        <button class="btn btn--sm" id="pagerPrev" type="button">← PREV</button>
+        <span class="mono" id="pagerInfo">-- / --</span>
+        <button class="btn btn--sm" id="pagerNext" type="button">NEXT →</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="hiddenFile" accept="image/*" multiple hidden />
+</AdminLayout>
+
+<style>
+  .upload-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: var(--space-4);
+  }
+
+  .upload-item {
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+
+  .upload-item__img {
+    aspect-ratio: 4 / 3;
+    width: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .upload-item__meta {
+    padding: 8px 10px;
+    font-size: 11px;
+    color: var(--text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .upload-item__actions {
+    display: flex;
+    border-top: 1px solid var(--border);
+  }
+
+  .upload-item__actions button {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    padding: 7px 0;
+    font-family: var(--font-data);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    color: var(--text-2);
+  }
+
+  .upload-item__actions button:hover {
+    background: var(--primary);
+    color: var(--black);
+  }
+
+  .upload-item__actions button + button {
+    border-left: 1px solid var(--border);
+  }
+
+  .list-pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+  }
+</style>
+
+<script>
+  import { adminFetch, confirmDanger, escapeHtml, toast } from '@/lib/admin-client';
+
+  interface UploadRow {
+    id: number;
+    url: string;
+    path: string;
+    original_name: string;
+    size_bytes: number;
+    created_at: string;
+  }
+
+  const grid = document.getElementById('uploadGrid')!;
+  const pagerInfo = document.getElementById('pagerInfo')!;
+  const countEl = document.getElementById('uploadCount')!;
+  const hiddenFile = document.getElementById('hiddenFile') as HTMLInputElement;
+  let page = 1;
+  let totalPages = 1;
+  const pageSize = 24;
+
+  function fmtSize(bytes: number): string {
+    if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+    return `${Math.round(bytes / 1024)}KB`;
+  }
+
+  async function load() {
+    let res: { items: UploadRow[]; total: number };
+    try {
+      res = await adminFetch(`/api/admin/uploads?page=${page}&page_size=${pageSize}`);
+    } catch (err) {
+      toast(`加载失败：${(err as Error).message}`, 'error');
+      return;
+    }
+    totalPages = Math.max(1, Math.ceil(res.total / pageSize));
+    pagerInfo.textContent = `${String(page).padStart(2, '0')} / ${String(totalPages).padStart(2, '0')}`;
+    countEl.textContent = `TOTAL ${res.total}`;
+
+    if (res.items.length === 0) {
+      grid.innerHTML = '<div style="color:var(--text-3)">还没有上传过图片</div>';
+      return;
+    }
+    grid.innerHTML = res.items
+      .map(
+        (row) => `
+          <figure class="upload-item" style="margin:0">
+            <img class="upload-item__img" src="${escapeHtml(row.url)}" alt="" loading="lazy" />
+            <figcaption class="upload-item__meta" title="${escapeHtml(row.original_name)}">
+              ${escapeHtml(row.original_name)} · ${fmtSize(row.size_bytes)}
+            </figcaption>
+            <div class="upload-item__actions">
+              <button data-copy="${escapeHtml(row.url)}" type="button">COPY URL</button>
+              <button data-md="${escapeHtml(row.url)}" type="button">COPY MD</button>
+              <button data-del="${row.id}" type="button">DELETE</button>
+            </div>
+          </figure>`
+      )
+      .join('');
+
+    grid.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        await navigator.clipboard.writeText(btn.dataset.copy!);
+        toast('URL 已复制');
+      })
+    );
+    grid.querySelectorAll<HTMLButtonElement>('[data-md]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        await navigator.clipboard.writeText(`![](${btn.dataset.md})`);
+        toast('Markdown 已复制');
+      })
+    );
+    grid.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        if (!confirmDanger('确认删除该文件？引用它的文章将显示裂图。')) return;
+        try {
+          await adminFetch(`/api/admin/uploads/${btn.dataset.del}`, { method: 'DELETE' });
+          toast('已删除');
+          load();
+        } catch (err) {
+          toast(`删除失败：${(err as Error).message}`, 'error');
+        }
+      })
+    );
+  }
+
+  document.getElementById('uploadBtn')!.addEventListener('click', () => hiddenFile.click());
+  hiddenFile.addEventListener('change', async () => {
+    const files = Array.from(hiddenFile.files ?? []);
+    hiddenFile.value = '';
+    for (const file of files) {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      try {
+        await adminFetch('/api/admin/uploads', { method: 'POST', body: form });
+        toast(`${file.name} 上传成功`);
+      } catch (err) {
+        toast(`${file.name} 上传失败：${(err as Error).message}`, 'error');
+      }
+    }
+    page = 1;
+    load();
+  });
+
+  document.getElementById('pagerPrev')!.addEventListener('click', () => {
+    if (page > 1) {
+      page -= 1;
+      load();
+    }
+  });
+  document.getElementById('pagerNext')!.addEventListener('click', () => {
+    if (page < totalPages) {
+      page += 1;
+      load();
+    }
+  });
+
+  load();
+</script>

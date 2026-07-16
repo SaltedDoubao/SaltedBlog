@@ -1,0 +1,133 @@
+/* ============================================
+   设计令牌 —— 依据《终末地》官网风格设计规范
+   ============================================ */
+
+:root {
+  /* 品牌色（不随主题变化） */
+  --primary: #f4f600;
+  --primary-hover: #e4e700;
+  --primary-active: #cace00;
+  --primary-dim: #dde000; /* 深底上的黄色文字 */
+  --black: #0b0d0f;
+  --graphite: #191c1f;
+  --industrial: #363b3f;
+  --steel: #7f9299;
+  --danger: #d94a40;
+
+  /* 字体 */
+  --font-sans: "HarmonyOS Sans SC", "HarmonyOS Sans", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: "Space Grotesk Variable", "Space Grotesk", "Arial Narrow",
+    sans-serif;
+  --font-data: "Space Grotesk Variable", "Space Grotesk", ui-monospace,
+    SFMono-Regular, Consolas, monospace;
+
+  /* 圆角：硬边体系 */
+  --radius: 2px;
+  --radius-panel: 4px;
+
+  /* 间距 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* 布局 */
+  --container: 1280px;
+  --container-wide: 1440px;
+  --prose-width: 720px;
+  --header-h: 72px;
+
+  /* 动效 */
+  --duration-fast: 120ms;
+  --duration: 180ms;
+  --duration-slow: 420ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-sharp: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ---- 浅色主题（纸张白） ---- */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f5f5f0;
+  --bg-muted: #e9eae5;
+  --surface: #ffffff;
+  --surface-2: #f0f1ec;
+
+  --text: #101214;
+  --text-2: #555c61;
+  --text-3: #868c90;
+  --text-disabled: #a8aca8;
+
+  --border: #c8cbc5;
+  --border-subtle: rgba(16, 18, 20, 0.14);
+  --border-strong: #101214;
+
+  --accent-text: #857f00; /* 浅底上可读的黄色替代 */
+
+  --grid-line: rgba(16, 18, 20, 0.035);
+  --watermark: rgba(16, 18, 20, 0.045);
+  --header-bg: rgba(245, 245, 240, 0.92);
+  --shadow-soft: 0 16px 40px rgba(11, 13, 15, 0.1);
+  --shadow-hard-sm: 4px 4px 0 #0b0d0f;
+  --shadow-hard: 8px 8px 0 #0b0d0f;
+  --scrollbar-thumb: #c8cbc5;
+
+  /* 代码块（浅色） */
+  --code-bg: #191c1f;
+  --code-text: #e8eaeb;
+  --code-inline-bg: #e9eae5;
+  --code-inline-text: #101214;
+  --hl-keyword: #f4a4ff;
+  --hl-string: #b8e986;
+  --hl-number: #ffd479;
+  --hl-comment: #7d888a;
+  --hl-function: #7cd7ff;
+  --hl-title: #7cd7ff;
+  --hl-attr: #ffd479;
+  --hl-symbol: #f4f600;
+}
+
+/* ---- 深色主题（工业黑） ---- */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0b0d0f;
+  --bg-muted: #14171a;
+  --surface: #191c1f;
+  --surface-2: #1f2326;
+
+  --text: #f7f7f2;
+  --text-2: #bfc3c3;
+  --text-3: #868c90;
+  --text-disabled: #5a5f5f;
+
+  --border: #363b3f;
+  --border-subtle: rgba(255, 255, 255, 0.14);
+  --border-strong: #f7f7f2;
+
+  --accent-text: #dde000;
+
+  --grid-line: rgba(255, 255, 255, 0.035);
+  --watermark: rgba(255, 255, 255, 0.04);
+  --header-bg: rgba(11, 13, 15, 0.88);
+  --shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.4);
+  --shadow-hard-sm: 4px 4px 0 rgba(244, 246, 0, 0.9);
+  --shadow-hard: 8px 8px 0 rgba(244, 246, 0, 0.9);
+  --scrollbar-thumb: #363b3f;
+
+  --code-bg: #14171a;
+  --code-text: #e8eaeb;
+  --code-inline-bg: #262b2e;
+  --code-inline-text: #f7f7f2;
+}

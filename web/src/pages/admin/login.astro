@@ -1,0 +1,186 @@
+---
+import '@fontsource-variable/space-grotesk';
+import '@/styles/tokens.css';
+import '@/styles/base.css';
+import '@/styles/admin.css';
+
+import { getMe } from '@/lib/api';
+
+// 已登录直接进入后台（登录页不经过 middleware 守卫，这里单独判断）
+const loggedIn = await getMe(Astro.request.headers.get('cookie'));
+if (loggedIn) {
+  return Astro.redirect('/admin');
+}
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>登录 · SaltedBlog Admin</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script is:inline>
+      (function () {
+        var theme = localStorage.getItem('sb-theme');
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="login-scene">
+      <div class="login-box">
+        <div class="login-box__brand">
+          <span class="login-box__glyph" aria-hidden="true"></span>
+          <div>
+            <b>SALTEDBLOG</b>
+            <small class="mono">ADMIN ACCESS / AUTHORIZATION REQUIRED</small>
+          </div>
+        </div>
+
+        <form id="loginForm" autocomplete="on">
+          <div class="form-field">
+            <label class="label" for="username">USERNAME</label>
+            <input class="input" id="username" name="username" required autocomplete="username" />
+          </div>
+          <div class="form-field" style="margin-top:14px">
+            <label class="label" for="password">PASSWORD</label>
+            <input
+              class="input"
+              id="password"
+              name="password"
+              type="password"
+              required
+              autocomplete="current-password"
+            />
+          </div>
+          <div class="login-error mono" id="loginError" hidden></div>
+          <button class="btn btn--primary btn--cut login-submit" type="submit" id="loginSubmit">
+            进入终端 / LOGIN ↘
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <style>
+      .login-scene {
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at 72% 28%, rgba(244, 246, 0, 0.1), transparent 30%),
+          linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          var(--black);
+        background-size:
+          auto,
+          38px 38px,
+          38px 38px;
+        padding: 20px;
+      }
+
+      .login-box {
+        width: min(400px, 100%);
+        padding: 34px 30px;
+        border: 1px solid #363b3f;
+        background: rgba(16, 18, 20, 0.88);
+        backdrop-filter: blur(10px);
+        color: #f7f7f2;
+        clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+      }
+
+      .login-box .input {
+        background: #101315;
+        border-color: #3a4044;
+        color: #f7f7f2;
+      }
+
+      .login-box .label {
+        color: #868c90;
+      }
+
+      .login-box__brand {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 26px;
+      }
+
+      .login-box__glyph {
+        width: 34px;
+        height: 34px;
+        flex: none;
+        background: var(--primary);
+        clip-path: polygon(50% 0, 100% 24%, 75% 50%, 100% 76%, 50% 100%, 0 76%, 25% 50%, 0 24%);
+      }
+
+      .login-box__brand b {
+        font-size: 18px;
+        font-weight: 900;
+        letter-spacing: -0.02em;
+      }
+
+      .login-box__brand small {
+        display: block;
+        margin-top: 4px;
+        font-size: 8px;
+        color: #7d888a;
+      }
+
+      .login-error {
+        margin-top: 12px;
+        font-size: 10px;
+        color: var(--danger);
+      }
+
+      .login-submit {
+        width: 100%;
+        margin-top: 20px;
+      }
+    </style>
+
+    <script>
+      const form = document.getElementById('loginForm') as HTMLFormElement;
+      const errorEl = document.getElementById('loginError') as HTMLElement;
+      const submitBtn = document.getElementById('loginSubmit') as HTMLButtonElement;
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        errorEl.hidden = true;
+        submitBtn.disabled = true;
+        const data = new FormData(form);
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: data.get('username'),
+              password: data.get('password'),
+            }),
+          });
+          if (res.ok) {
+            location.href = '/admin';
+            return;
+          }
+          const body = await res.json().catch(() => ({}));
+          errorEl.textContent =
+            res.status === 429
+              ? 'TOO MANY ATTEMPTS / 尝试过于频繁，请稍后再试'
+              : res.status === 401
+                ? 'ACCESS DENIED / 用户名或密码错误'
+                : `ERROR / ${body.error ?? res.status}`;
+          errorEl.hidden = false;
+        } catch {
+          errorEl.textContent = 'NETWORK ERROR / 无法连接服务器';
+          errorEl.hidden = false;
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,151 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="仪表盘" eyebrow="DASHBOARD / OVERVIEW" active="dashboard">
+  <div class="stat-cards" id="statCards">
+    <div class="stat-card">
+      <div class="stat-card__label">文章总数</div>
+      <div class="stat-card__value" data-stat="total_posts">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">已发布</div>
+      <div class="stat-card__value" data-stat="total_published">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">今日 PV / UV</div>
+      <div class="stat-card__value" data-stat="today">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">累计 PV</div>
+      <div class="stat-card__value" data-stat="total_pv">--</div>
+    </div>
+  </div>
+
+  <div class="admin-panel">
+    <div class="admin-panel__head">
+      <span>TRAFFIC / 最近 30 天访问趋势</span>
+    </div>
+    <div class="admin-panel__body">
+      <div class="chart-box"><canvas id="trafficChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="admin-panel">
+    <div class="admin-panel__head"><span>TOP PAGES / 最近 30 天热门路径</span></div>
+    <table class="admin-table">
+      <thead>
+        <tr><th style="width:60px">#</th><th>路径</th><th style="width:120px">PV</th></tr>
+      </thead>
+      <tbody id="topPathsBody">
+        <tr><td colspan="3" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</AdminLayout>
+
+<style>
+  .chart-box {
+    position: relative;
+    height: 320px;
+  }
+</style>
+
+<script>
+  import Chart from 'chart.js/auto';
+  import { adminFetch, escapeHtml, toast } from '@/lib/admin-client';
+
+  interface Dashboard {
+    total_posts: number;
+    total_published: number;
+    total_pv: number;
+    today_pv: number;
+    today_uv: number;
+    days: { date: string; pv: number; uv: number }[];
+    top_paths: { path: string; pv: number }[];
+  }
+
+  async function init() {
+    let data: Dashboard;
+    try {
+      data = await adminFetch<Dashboard>('/api/admin/stats/dashboard');
+    } catch (err) {
+      toast(`统计加载失败：${(err as Error).message}`, 'error');
+      return;
+    }
+
+    const set = (key: string, value: string) => {
+      const el = document.querySelector(`[data-stat="${key}"]`);
+      if (el) el.textContent = value;
+    };
+    set('total_posts', String(data.total_posts));
+    set('total_published', String(data.total_published));
+    set('total_pv', String(data.total_pv));
+    set('today', `${data.today_pv} / ${data.today_uv}`);
+
+    const styles = getComputedStyle(document.documentElement);
+    const yellow = styles.getPropertyValue('--primary').trim() || '#f4f600';
+    const steel = styles.getPropertyValue('--steel').trim() || '#7f9299';
+    const textColor = styles.getPropertyValue('--text-2').trim() || '#555c61';
+    const gridColor = styles.getPropertyValue('--border').trim() || '#c8cbc5';
+
+    const canvas = document.getElementById('trafficChart') as HTMLCanvasElement;
+    new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: data.days.map((d) => d.date.slice(5)),
+        datasets: [
+          {
+            label: 'PV',
+            data: data.days.map((d) => d.pv),
+            borderColor: yellow,
+            backgroundColor: 'rgba(244, 246, 0, 0.12)',
+            fill: true,
+            tension: 0.25,
+            borderWidth: 2,
+            pointRadius: 2,
+          },
+          {
+            label: 'UV',
+            data: data.days.map((d) => d.uv),
+            borderColor: steel,
+            backgroundColor: 'transparent',
+            tension: 0.25,
+            borderWidth: 2,
+            pointRadius: 2,
+          },
+        ],
+      },
+      options: {
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: textColor, boxWidth: 18 } },
+        },
+        scales: {
+          x: { ticks: { color: textColor, maxTicksLimit: 12 }, grid: { color: gridColor } },
+          y: { ticks: { color: textColor, precision: 0 }, grid: { color: gridColor }, beginAtZero: true },
+        },
+      },
+    });
+
+    const tbody = document.getElementById('topPathsBody')!;
+    if (data.top_paths.length === 0) {
+      tbody.innerHTML =
+        '<tr><td colspan="3" style="text-align:center;color:var(--text-3)">暂无访问数据</td></tr>';
+    } else {
+      tbody.innerHTML = data.top_paths
+        .map(
+          (row, i) => `
+            <tr>
+              <td class="mono">${String(i + 1).padStart(2, '0')}</td>
+              <td><a href="${escapeHtml(row.path)}" target="_blank" style="color:inherit">${escapeHtml(row.path)}</a></td>
+              <td class="mono">${row.pv}</td>
+            </tr>`
+        )
+        .join('');
+    }
+  }
+
+  init();
+</script>

@@ -1,0 +1,101 @@
+---
+import '@fontsource-variable/space-grotesk';
+import '@/styles/tokens.css';
+import '@/styles/base.css';
+import '@/styles/admin.css';
+
+interface Props {
+  title: string;
+  eyebrow?: string;
+  active: 'dashboard' | 'posts' | 'terms' | 'friends' | 'settings' | 'uploads';
+}
+
+const { title, eyebrow = 'ADMIN CONSOLE', active } = Astro.props;
+
+// 会话校验由 src/middleware.ts 完成，这里只读取用户名
+const username = Astro.locals.adminUser ?? 'admin';
+
+const navItems = [
+  { id: 'dashboard', href: '/admin', label: '仪表盘', index: '01' },
+  { id: 'posts', href: '/admin/posts', label: '文章管理', index: '02' },
+  { id: 'terms', href: '/admin/terms', label: '分类 / 标签 / 系列', index: '03' },
+  { id: 'friends', href: '/admin/friends', label: '友情链接', index: '04' },
+  { id: 'uploads', href: '/admin/uploads', label: '图片素材', index: '05' },
+  { id: 'settings', href: '/admin/settings', label: '站点设置', index: '06' },
+] as const;
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title} · SaltedBlog Admin</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script is:inline>
+      (function () {
+        var theme = localStorage.getItem('sb-theme');
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="admin-shell">
+      <aside class="admin-side">
+        <a class="admin-side__brand" href="/admin">
+          <span class="admin-side__glyph" aria-hidden="true"></span>
+          <span>
+            <b>SALTEDBLOG</b>
+            <small class="mono">ADMIN TERMINAL</small>
+          </span>
+        </a>
+        <nav class="admin-nav" aria-label="后台导航">
+          {
+            navItems.map((item) => (
+              <a href={item.href} aria-current={active === item.id ? 'page' : undefined}>
+                <span class="mono">{item.index}</span>
+                {item.label}
+              </a>
+            ))
+          }
+        </nav>
+        <div class="admin-side__foot">
+          <span>@{username}</span>
+          <span style="display:flex;gap:6px">
+            <a href="/" target="_blank">VIEW SITE</a>
+            <button id="adminLogout" type="button">LOGOUT</button>
+          </span>
+        </div>
+      </aside>
+
+      <main class="admin-main">
+        <header class="admin-header">
+          <div>
+            <div class="admin-header__eyebrow">{eyebrow}</div>
+            <h1 class="admin-header__title">{title}</h1>
+          </div>
+          <div class="admin-header__actions">
+            <slot name="actions" />
+          </div>
+        </header>
+        <slot />
+      </main>
+    </div>
+
+    <script>
+      import { adminFetch } from '@/lib/admin-client';
+
+      document.getElementById('adminLogout')?.addEventListener('click', async () => {
+        try {
+          await adminFetch('/api/auth/logout', { method: 'POST' });
+        } finally {
+          location.href = '/admin/login';
+        }
+      });
+    </script>
+  </body>
+</html>

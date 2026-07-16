@@ -1,0 +1,510 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Giscus from '@/components/Giscus.astro';
+import { getSettingsCached, type PostDetailResponse } from '@/lib/api';
+import { formatDate, localName, localePath, otherLang, t, type Lang } from '@/i18n';
+
+interface Props {
+  lang: Lang;
+  /** 由页面 frontmatter 预取（404 判断在页面层完成） */
+  detail: PostDetailResponse;
+}
+
+const { lang, detail } = Astro.props;
+const settings = await getSettingsCached();
+const { post, content_html, toc, translations, series_posts, prev, next } = detail;
+
+const date = formatDate(lang, post.published_at);
+const updated = formatDate(lang, post.updated_at);
+const categoryName = localName(lang, post.category);
+const seriesName = localName(lang, post.series);
+const translation = translations.find((tr) => tr.lang === otherLang(lang));
+// 无对应翻译时，语言切换回退到另一语言的首页而不是 404
+const altPath = translation
+  ? localePath(otherLang(lang), `/posts/${translation.slug}`)
+  : localePath(otherLang(lang), '/');
+const showToc = toc.length > 1;
+---
+
+<BaseLayout
+  lang={lang}
+  title={post.title}
+  description={post.summary || undefined}
+  ogImage={post.cover}
+  ogType="article"
+  altPath={altPath}
+  hasAlt={Boolean(translation)}
+  trackPostId={post.id}
+>
+  <article class="post">
+    <!-- 文章头部 -->
+    <header class="post-header">
+      <div class="container post-header__inner">
+        <div class="post-header__eyebrow mono rise-in">
+          <span>POST</span>
+          {date && <span>/ {date}</span>}
+          {
+            categoryName && post.category && (
+              <a href={localePath(lang, `/categories/${post.category.slug}`)}>/ {categoryName}</a>
+            )
+          }
+        </div>
+        <h1 class="post-header__title rise-in">{post.title}</h1>
+        <div class="post-header__meta mono rise-in">
+          <span>{post.view_count} {t(lang, 'post.views')}</span>
+          {updated && <span>{t(lang, 'post.updated')} {updated}</span>}
+          {
+            translation && altPath && (
+              <a class="post-header__translation" href={altPath}>
+                {t(lang, 'post.translation')} ↗
+              </a>
+            )
+          }
+        </div>
+      </div>
+    </header>
+
+    <div class="container">
+      <div class:list={['post-layout', { 'post-layout--with-toc': showToc }]}>
+        <div class="post-main">
+          {
+            post.series && series_posts.length > 0 && (
+              <nav class="series-panel">
+                <div class="series-panel__head mono">
+                  <span>SERIES</span>
+                  <a href={localePath(lang, `/series/${post.series.slug}`)}>{seriesName}</a>
+                </div>
+                <ol class="series-panel__list">
+                  {series_posts.map((sp) => (
+                    <li class:list={[{ 'is-current': sp.current }]}>
+                      {sp.current ? (
+                        <span>{sp.title}</span>
+                      ) : (
+                        <a href={localePath(lang, `/posts/${sp.slug}`)}>{sp.title}</a>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </nav>
+            )
+          }
+
+          {post.cover && <img class="post-cover" src={post.cover} alt={post.title} />}
+
+          <div class="prose" set:html={content_html} />
+
+          {
+            post.tags.length > 0 && (
+              <div class="post-tags">
+                <span class="post-tags__label mono">{t(lang, 'post.tags')} /</span>
+                {post.tags.map((tag) => (
+                  <a class="tag" href={localePath(lang, `/tags/${tag.slug}`)}>
+                    {localName(lang, tag)}
+                  </a>
+                ))}
+              </div>
+            )
+          }
+
+          <nav class="post-nav">
+            {
+              prev ? (
+                <a class="post-nav__item card card--hover" href={localePath(lang, `/posts/${prev.slug}`)}>
+                  <span class="mono">← {t(lang, 'post.prev')}</span>
+                  <b>{prev.title}</b>
+                </a>
+              ) : (
+                <span class="post-nav__item post-nav__item--empty" />
+              )
+            }
+            {
+              next ? (
+                <a
+                  class="post-nav__item post-nav__item--next card card--hover"
+                  href={localePath(lang, `/posts/${next.slug}`)}
+                >
+                  <span class="mono">{t(lang, 'post.next')} →</span>
+                  <b>{next.title}</b>
+                </a>
+              ) : (
+                <span class="post-nav__item post-nav__item--empty" />
+              )
+            }
+          </nav>
+
+          <Giscus lang={lang} settings={settings} />
+        </div>
+
+        {
+          showToc && (
+            <aside class="post-toc" aria-label={t(lang, 'post.toc')}>
+              <div class="post-toc__inner">
+                <div class="post-toc__title mono">{t(lang, 'post.toc')} / TOC</div>
+                <nav id="tocNav">
+                  {toc.map((item) => (
+                    <a
+                      class:list={['post-toc__link', `post-toc__link--l${item.level}`]}
+                      href={`#${item.id}`}
+                    >
+                      {item.text}
+                    </a>
+                  ))}
+                </nav>
+              </div>
+            </aside>
+          )
+        }
+      </div>
+    </div>
+  </article>
+</BaseLayout>
+
+<style>
+  .post-header {
+    padding: var(--space-16) 0 var(--space-12);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--space-12);
+    background: linear-gradient(180deg, var(--surface-2), transparent);
+  }
+
+  .post-header__inner {
+    max-width: calc(var(--prose-width) + 320px);
+  }
+
+  .post-header__eyebrow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: var(--text-2);
+  }
+
+  .post-header__eyebrow::before {
+    content: '';
+    width: 36px;
+    height: 4px;
+    background: var(--primary);
+  }
+
+  .post-header__eyebrow a {
+    color: var(--accent-text);
+    text-decoration: none;
+  }
+
+  .post-header__eyebrow a:hover {
+    text-decoration: underline;
+  }
+
+  .post-header__title {
+    margin: var(--space-4) 0 0;
+    font-size: clamp(30px, 4.5vw, 52px);
+    line-height: 1.12;
+    font-weight: 900;
+    letter-spacing: -0.025em;
+    max-width: 900px;
+  }
+
+  .post-header__meta {
+    display: flex;
+    gap: var(--space-5);
+    flex-wrap: wrap;
+    margin-top: var(--space-5);
+    font-size: 10px;
+    color: var(--text-3);
+  }
+
+  .post-header__translation {
+    color: var(--accent-text);
+    text-decoration: none;
+  }
+
+  .post-header__translation:hover {
+    text-decoration: underline;
+  }
+
+  .post-layout {
+    display: grid;
+    grid-template-columns: minmax(0, var(--prose-width));
+    justify-content: center;
+    gap: var(--space-16);
+  }
+
+  .post-layout--with-toc {
+    grid-template-columns: minmax(0, var(--prose-width)) 260px;
+  }
+
+  .post-main {
+    min-width: 0;
+  }
+
+  .post-cover {
+    display: block;
+    width: 100%;
+    margin-bottom: var(--space-8);
+    border: 1px solid var(--border);
+  }
+
+  /* 系列面板 */
+  .series-panel {
+    margin-bottom: var(--space-8);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    background: var(--surface);
+  }
+
+  .series-panel__head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    padding: 10px var(--space-4);
+    border-bottom: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--text-3);
+  }
+
+  .series-panel__head a {
+    color: var(--accent-text);
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .series-panel__head a:hover {
+    text-decoration: underline;
+  }
+
+  .series-panel__list {
+    margin: 0;
+    padding: var(--space-2) 0;
+    list-style: none;
+    counter-reset: series;
+  }
+
+  .series-panel__list li {
+    counter-increment: series;
+    display: flex;
+    gap: var(--space-3);
+    padding: 6px var(--space-4);
+    font-size: 13.5px;
+  }
+
+  .series-panel__list li::before {
+    content: counter(series, decimal-leading-zero);
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-3);
+    padding-top: 2px;
+  }
+
+  .series-panel__list li.is-current {
+    background: var(--surface-2);
+    font-weight: 700;
+  }
+
+  .series-panel__list li.is-current::before {
+    color: var(--accent-text);
+  }
+
+  .series-panel__list a {
+    text-decoration: none;
+    color: var(--text-2);
+  }
+
+  .series-panel__list a:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
+
+  /* 标签 */
+  .post-tags {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin-top: var(--space-12);
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--border);
+  }
+
+  .post-tags__label {
+    font-size: 10px;
+    color: var(--text-3);
+  }
+
+  /* 上下篇 */
+  .post-nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+    margin-top: var(--space-8);
+  }
+
+  .post-nav__item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-4) var(--space-5);
+    text-decoration: none;
+    color: var(--text);
+  }
+
+  .post-nav__item span {
+    font-size: 9px;
+    color: var(--text-3);
+  }
+
+  .post-nav__item b {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .post-nav__item--next {
+    text-align: right;
+  }
+
+  .post-nav__item--empty {
+    border: 0;
+    background: transparent;
+  }
+
+  /* TOC */
+  .post-toc {
+    display: block;
+  }
+
+  .post-toc__inner {
+    position: sticky;
+    top: calc(var(--header-h) + 24px);
+    max-height: calc(100vh - var(--header-h) - 48px);
+    overflow-y: auto;
+    padding-left: var(--space-4);
+    border-left: 1px solid var(--border);
+  }
+
+  .post-toc__title {
+    font-size: 10px;
+    color: var(--text-3);
+    margin-bottom: var(--space-3);
+  }
+
+  .post-toc__link {
+    position: relative;
+    display: block;
+    padding: 4px 0 4px var(--space-3);
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-2);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    margin-left: -17px;
+    padding-left: calc(var(--space-3) + 15px);
+    transition: color var(--duration-fast) var(--ease),
+      border-color var(--duration-fast) var(--ease);
+  }
+
+  .post-toc__link--l3 {
+    padding-left: calc(var(--space-3) + 27px);
+    font-size: 12px;
+  }
+
+  .post-toc__link--l4 {
+    padding-left: calc(var(--space-3) + 39px);
+    font-size: 12px;
+  }
+
+  .post-toc__link:hover {
+    color: var(--text);
+  }
+
+  .post-toc__link.is-active {
+    color: var(--text);
+    font-weight: 700;
+    border-left-color: var(--primary);
+  }
+
+  @media (max-width: 1023px) {
+    .post-layout--with-toc {
+      grid-template-columns: minmax(0, var(--prose-width));
+    }
+    .post-toc {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  import hljs from 'highlight.js/lib/common';
+
+  // 代码高亮 + 语言标识 + 复制按钮
+  document.querySelectorAll<HTMLElement>('.prose pre code').forEach((block) => {
+    const langMatch = /language-(\S+)/.exec(block.className);
+    const langName = langMatch?.[1] ?? '';
+    if (langName && hljs.getLanguage(langName)) {
+      hljs.highlightElement(block);
+    } else if (langName !== 'plaintext' && langName !== 'text') {
+      try {
+        block.innerHTML = hljs.highlightAuto(block.textContent ?? '').value;
+      } catch {
+        /* 保持原样 */
+      }
+    }
+
+    const pre = block.parentElement;
+    if (!pre) return;
+    const toolbar = document.createElement('div');
+    toolbar.className = 'code-toolbar';
+    const langEl = document.createElement('span');
+    langEl.className = 'code-toolbar__lang';
+    langEl.textContent = langName || 'CODE';
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'code-toolbar__copy';
+    copyBtn.type = 'button';
+    copyBtn.textContent = 'COPY';
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(block.textContent ?? '');
+        copyBtn.textContent = 'COPIED';
+        copyBtn.classList.add('is-copied');
+        setTimeout(() => {
+          copyBtn.textContent = 'COPY';
+          copyBtn.classList.remove('is-copied');
+        }, 1600);
+      } catch {
+        copyBtn.textContent = 'FAILED';
+      }
+    });
+    toolbar.append(langEl, copyBtn);
+    pre.appendChild(toolbar);
+  });
+
+  // TOC 滚动高亮
+  const tocLinks = Array.from(
+    document.querySelectorAll<HTMLAnchorElement>('#tocNav .post-toc__link')
+  );
+  if (tocLinks.length > 0) {
+    const map = new Map<Element, HTMLAnchorElement>();
+    for (const link of tocLinks) {
+      const id = decodeURIComponent(link.hash.slice(1));
+      const heading = document.getElementById(id);
+      if (heading) map.set(heading, link);
+    }
+    let activeLink: HTMLAnchorElement | null = null;
+    const setActive = (link: HTMLAnchorElement | null) => {
+      if (activeLink === link) return;
+      activeLink?.classList.remove('is-active');
+      link?.classList.add('is-active');
+      activeLink = link;
+    };
+    const headings = Array.from(map.keys());
+    const onScroll = () => {
+      const fromTop = window.scrollY + 100;
+      let current: Element | null = null;
+      for (const h of headings) {
+        if ((h as HTMLElement).offsetTop <= fromTop) current = h;
+      }
+      setActive(current ? (map.get(current) ?? null) : null);
+    };
+    document.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  }
+</script>

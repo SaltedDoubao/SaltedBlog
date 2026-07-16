@@ -1,0 +1,124 @@
+---
+import '@fontsource-variable/space-grotesk';
+import '@/styles/tokens.css';
+import '@/styles/base.css';
+import '@/styles/prose.css';
+
+import Header from '@/components/Header.astro';
+import Footer from '@/components/Footer.astro';
+import { getSettingsCached } from '@/lib/api';
+import { altLangPath, type Lang } from '@/i18n';
+
+interface Props {
+  lang: Lang;
+  title?: string;
+  description?: string;
+  /** 语言切换目标（如文章页对应翻译的 URL） */
+  altPath?: string | null;
+  /** 是否在另一语言存在对应页面（控制 hreflang 输出） */
+  hasAlt?: boolean;
+  ogImage?: string | null;
+  ogType?: string;
+  /** 文章页传入 id 用于阅读量统计 */
+  trackPostId?: number;
+}
+
+const {
+  lang,
+  title,
+  description,
+  altPath = null,
+  hasAlt = true,
+  ogImage = null,
+  ogType = 'website',
+  trackPostId,
+} = Astro.props;
+
+const settings = await getSettingsCached();
+const siteTitle = settings[`site_title_${lang}`] || 'SaltedBlog';
+const siteDescription = description || settings[`description_${lang}`] || '';
+const pageTitle = title ? `${title} · ${siteTitle}` : siteTitle;
+
+const siteUrl = (
+  (typeof process !== 'undefined' && process.env?.PUBLIC_SITE_URL) ||
+  import.meta.env.PUBLIC_SITE_URL ||
+  ''
+).replace(/\/$/, '');
+
+const pathname = Astro.url.pathname;
+const canonical = siteUrl ? `${siteUrl}${pathname}` : null;
+const resolvedAltPath = altPath ?? altLangPath(lang, pathname);
+const ogImageAbs = ogImage && siteUrl && ogImage.startsWith('/') ? `${siteUrl}${ogImage}` : ogImage;
+---
+
+<!doctype html>
+<html lang={lang === 'zh' ? 'zh-CN' : 'en'}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0d0f" />
+    <title>{pageTitle}</title>
+    {siteDescription && <meta name="description" content={siteDescription} />}
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title={siteTitle}
+      href={lang === 'zh' ? '/rss.xml' : '/en/rss.xml'}
+    />
+    {canonical && <link rel="canonical" href={canonical} />}
+    {
+      hasAlt && siteUrl && (
+        <>
+          <link
+            rel="alternate"
+            hreflang={lang === 'zh' ? 'en' : 'zh-CN'}
+            href={`${siteUrl}${resolvedAltPath}`}
+          />
+          <link rel="alternate" hreflang={lang === 'zh' ? 'zh-CN' : 'en'} href={canonical} />
+        </>
+      )
+    }
+
+    <meta property="og:type" content={ogType} />
+    <meta property="og:title" content={pageTitle} />
+    {siteDescription && <meta property="og:description" content={siteDescription} />}
+    {canonical && <meta property="og:url" content={canonical} />}
+    <meta property="og:site_name" content={siteTitle} />
+    {ogImageAbs && <meta property="og:image" content={ogImageAbs} />}
+    <meta name="twitter:card" content={ogImageAbs ? 'summary_large_image' : 'summary'} />
+
+    <script is:inline>
+      (function () {
+        var theme = localStorage.getItem('sb-theme');
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+  </head>
+  <body data-post-id={trackPostId}>
+    <Header lang={lang} pathname={pathname} altPath={resolvedAltPath} siteTitle={siteTitle} />
+    <main>
+      <slot />
+    </main>
+    <Footer lang={lang} settings={settings} />
+
+    <script>
+      // 访问统计上报（同访客同路径每日去重由服务端处理）
+      const postId = document.body.dataset.postId;
+      const payload = {
+        path: location.pathname,
+        post_id: postId ? Number(postId) : null,
+        referrer: document.referrer || null,
+      };
+      fetch('/api/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => {});
+    </script>
+  </body>
+</html>

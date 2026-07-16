@@ -1,0 +1,216 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="分类 / 标签 / 系列" eyebrow="TAXONOMY / MANAGE" active="terms">
+  {
+    ['categories', 'tags', 'series'].map((kind) => (
+      <div class="admin-panel" data-kind={kind}>
+        <div class="admin-panel__head">
+          <span>
+            {kind === 'categories' ? 'CATEGORIES / 分类' : kind === 'tags' ? 'TAGS / 标签' : 'SERIES / 系列'}
+          </span>
+          <button class="btn btn--sm" data-role="new" type="button">
+            + 新增
+          </button>
+        </div>
+        <div class="admin-panel__body term-form" data-role="form" hidden>
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="label">中文名 *</label>
+              <input class="input" data-field="name_zh" />
+            </div>
+            <div class="form-field">
+              <label class="label">英文名 *</label>
+              <input class="input" data-field="name_en" />
+            </div>
+            <div class="form-field">
+              <label class="label">SLUG（留空按英文名生成）</label>
+              <input class="input" data-field="slug" />
+            </div>
+            {kind === 'categories' && (
+              <div class="form-field">
+                <label class="label">排序（小的在前）</label>
+                <input class="input" data-field="sort_order" type="number" value="0" />
+              </div>
+            )}
+            {kind === 'series' && (
+              <>
+                <div class="form-field">
+                  <label class="label">中文简介</label>
+                  <textarea class="textarea" data-field="description_zh" rows="2" />
+                </div>
+                <div class="form-field">
+                  <label class="label">英文简介</label>
+                  <textarea class="textarea" data-field="description_en" rows="2" />
+                </div>
+              </>
+            )}
+          </div>
+          <div class="form-actions">
+            <button class="btn btn--primary btn--sm" data-role="save" type="button">
+              保存
+            </button>
+            <button class="btn btn--sm" data-role="cancel" type="button">
+              取消
+            </button>
+          </div>
+        </div>
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th style="width:48px">ID</th>
+              <th>中文名</th>
+              <th>英文名</th>
+              <th>SLUG</th>
+              <th style="width:80px">文章数</th>
+              <th style="width:140px">操作</th>
+            </tr>
+          </thead>
+          <tbody data-role="tbody">
+            <tr>
+              <td colspan="6" style="text-align:center;color:var(--text-3)">
+                加载中…
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    ))
+  }
+</AdminLayout>
+
+<script>
+  import { adminFetch, confirmDanger, escapeHtml, toast } from '@/lib/admin-client';
+
+  interface TermRow {
+    id: number;
+    slug: string;
+    name_zh: string;
+    name_en: string;
+    sort_order?: number;
+    description_zh?: string | null;
+    description_en?: string | null;
+    post_count: number;
+  }
+
+  function setupPanel(panel: HTMLElement) {
+    const kind = panel.dataset.kind!;
+    const api = `/api/admin/${kind}`;
+    const tbody = panel.querySelector<HTMLElement>('[data-role="tbody"]')!;
+    const form = panel.querySelector<HTMLElement>('[data-role="form"]')!;
+    let editingId: number | null = null;
+
+    const field = (name: string) =>
+      form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-field="${name}"]`);
+
+    function openForm(row?: TermRow) {
+      editingId = row?.id ?? null;
+      field('name_zh')!.value = row?.name_zh ?? '';
+      field('name_en')!.value = row?.name_en ?? '';
+      field('slug')!.value = row?.slug ?? '';
+      const sortField = field('sort_order');
+      if (sortField) sortField.value = String(row?.sort_order ?? 0);
+      const dzh = field('description_zh');
+      if (dzh) dzh.value = row?.description_zh ?? '';
+      const den = field('description_en');
+      if (den) den.value = row?.description_en ?? '';
+      form.hidden = false;
+      field('name_zh')!.focus();
+    }
+
+    async function load() {
+      let rows: TermRow[];
+      try {
+        const res = await adminFetch<{ items: TermRow[] }>(api);
+        rows = res.items;
+      } catch (err) {
+        toast(`加载失败：${(err as Error).message}`, 'error');
+        return;
+      }
+      if (rows.length === 0) {
+        tbody.innerHTML =
+          '<tr><td colspan="6" style="text-align:center;color:var(--text-3)">暂无数据</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows
+        .map(
+          (row) => `
+            <tr>
+              <td class="mono">${row.id}</td>
+              <td style="font-weight:600">${escapeHtml(row.name_zh)}</td>
+              <td>${escapeHtml(row.name_en)}</td>
+              <td class="mono">${escapeHtml(row.slug)}</td>
+              <td class="mono">${row.post_count}</td>
+              <td>
+                <div class="cell-actions">
+                  <button class="btn btn--sm" data-edit="${row.id}" type="button">编辑</button>
+                  <button class="btn btn--sm btn--danger" data-del="${row.id}" type="button">删除</button>
+                </div>
+              </td>
+            </tr>`
+        )
+        .join('');
+
+      tbody.querySelectorAll<HTMLButtonElement>('[data-edit]').forEach((btn) =>
+        btn.addEventListener('click', () => {
+          const row = rows.find((r) => r.id === Number(btn.dataset.edit));
+          if (row) openForm(row);
+        })
+      );
+      tbody.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((btn) =>
+        btn.addEventListener('click', async () => {
+          if (!confirmDanger('确认删除？关联文章将解除引用。')) return;
+          try {
+            await adminFetch(`${api}/${btn.dataset.del}`, { method: 'DELETE' });
+            toast('已删除');
+            load();
+          } catch (err) {
+            toast(`删除失败：${(err as Error).message}`, 'error');
+          }
+        })
+      );
+    }
+
+    panel.querySelector('[data-role="new"]')!.addEventListener('click', () => openForm());
+    panel.querySelector('[data-role="cancel"]')!.addEventListener('click', () => {
+      form.hidden = true;
+      editingId = null;
+    });
+    panel.querySelector('[data-role="save"]')!.addEventListener('click', async () => {
+      const payload: Record<string, unknown> = {
+        name_zh: field('name_zh')!.value.trim(),
+        name_en: field('name_en')!.value.trim(),
+        slug: field('slug')!.value.trim() || null,
+      };
+      const sortField = field('sort_order');
+      if (sortField) payload.sort_order = Number(sortField.value) || 0;
+      const dzh = field('description_zh');
+      if (dzh) payload.description_zh = dzh.value.trim() || null;
+      const den = field('description_en');
+      if (den) payload.description_en = den.value.trim() || null;
+
+      if (!payload.name_zh || !payload.name_en) {
+        toast('中文名与英文名必填', 'error');
+        return;
+      }
+      try {
+        if (editingId) {
+          await adminFetch(`${api}/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        } else {
+          await adminFetch(api, { method: 'POST', body: JSON.stringify(payload) });
+        }
+        toast('已保存');
+        form.hidden = true;
+        editingId = null;
+        load();
+      } catch (err) {
+        toast(`保存失败：${(err as Error).message}`, 'error');
+      }
+    });
+
+    load();
+  }
+
+  document.querySelectorAll<HTMLElement>('.admin-panel[data-kind]').forEach(setupPanel);
+</script>

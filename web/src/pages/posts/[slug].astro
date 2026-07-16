@@ -1,0 +1,11 @@
+---
+import PostDetailPage from '@/components/pages/PostDetailPage.astro';
+import { getPostDetailOrNull } from '@/lib/api';
+
+const detail = await getPostDetailOrNull('zh', Astro.params.slug!);
+if (!detail) {
+  return Astro.rewrite('/404');
+}
+---
+
+<PostDetailPage lang="zh" detail={detail} />

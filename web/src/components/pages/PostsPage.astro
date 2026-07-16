@@ -1,0 +1,133 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import PostCard from '@/components/PostCard.astro';
+import Pagination from '@/components/Pagination.astro';
+import { getPosts, type SeriesOut, type TagOut, type CategoryOut } from '@/lib/api';
+import { t, localName, localePath, type Lang } from '@/i18n';
+
+interface Props {
+  lang: Lang;
+  /** 按分类/标签/系列过滤（term 由页面 frontmatter 预先解析并做 404 判断） */
+  filter?: {
+    type: 'category' | 'tag' | 'series';
+    slug: string;
+    term: CategoryOut | TagOut | SeriesOut;
+  };
+}
+
+const { lang, filter } = Astro.props;
+const page = Math.max(1, Number(Astro.url.searchParams.get('page')) || 1);
+const pageSize = 12;
+
+let filterName = '';
+let filterDescription = '';
+if (filter) {
+  filterName = localName(lang, filter.term);
+  if (filter.type === 'series') {
+    const s = filter.term as SeriesOut;
+    filterDescription = (lang === 'zh' ? s.description_zh : s.description_en) || '';
+  }
+}
+
+const postsRes = await getPosts({
+  lang,
+  page,
+  pageSize,
+  category: filter?.type === 'category' ? filter.slug : undefined,
+  tag: filter?.type === 'tag' ? filter.slug : undefined,
+  series: filter?.type === 'series' ? filter.slug : undefined,
+});
+
+const filterTypeLabel = filter ? t(lang, `posts.filter.${filter.type}` as const) : '';
+const heading = filter ? filterName : t(lang, 'posts.title');
+const eyebrow = filter
+  ? `${filter.type.toUpperCase()} / ${filter.slug.toUpperCase()}`
+  : t(lang, 'posts.eyebrow');
+
+const basePath = filter
+  ? localePath(lang, `/${filter.type === 'category' ? 'categories' : filter.type === 'tag' ? 'tags' : 'series'}/${filter.slug}`)
+  : localePath(lang, '/posts');
+const makeHref = (p: number) => (p <= 1 ? basePath : `${basePath}?page=${p}`);
+---
+
+<BaseLayout lang={lang} title={heading}>
+  <section class="page-section">
+    <div class="watermark" aria-hidden="true">{filter ? filter.type : 'POSTS'}</div>
+    <div class="container">
+      <header class="section-heading rise-in">
+        <span class="section-heading__eyebrow">{eyebrow}</span>
+        <h1 class="section-heading__title">
+          {filter && <span class="filter-type">{filterTypeLabel} /</span>}
+          {heading}
+        </h1>
+        {filterDescription && <p class="filter-desc">{filterDescription}</p>}
+        <div class="posts-count mono">
+          {String(postsRes.total).padStart(2, '0')} {t(lang, 'posts.count')}
+        </div>
+      </header>
+
+      {
+        postsRes.items.length === 0 ? (
+          <div class="empty-state mono">NO SIGNAL / {t(lang, 'posts.empty')}</div>
+        ) : (
+          <div class="posts-grid">
+            {postsRes.items.map((post, i) => (
+              <PostCard
+                lang={lang}
+                post={post}
+                index={String((page - 1) * pageSize + i + 1).padStart(2, '0')}
+              />
+            ))}
+          </div>
+        )
+      }
+
+      <Pagination page={page} total={postsRes.total} pageSize={pageSize} makeHref={makeHref} />
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-section {
+    position: relative;
+    padding: var(--space-20) 0;
+    overflow: hidden;
+  }
+
+  .filter-type {
+    color: var(--text-3);
+    font-weight: 700;
+  }
+
+  .filter-desc {
+    margin: var(--space-4) 0 0;
+    max-width: 560px;
+    color: var(--text-2);
+    font-size: 14px;
+  }
+
+  .posts-count {
+    margin-top: var(--space-4);
+    font-size: 11px;
+    color: var(--text-3);
+  }
+
+  .posts-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-5);
+  }
+
+  @media (max-width: 1023px) {
+    .posts-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 639px) {
+    .posts-grid {
+      grid-template-columns: 1fr;
+      gap: var(--space-4);
+    }
+  }
+</style>

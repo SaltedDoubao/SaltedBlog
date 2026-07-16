@@ -1,0 +1,12 @@
+---
+import PostsPage from '@/components/pages/PostsPage.astro';
+import { findTerm } from '@/lib/api';
+
+const slug = Astro.params.slug!;
+const term = await findTerm('en', 'tag', slug);
+if (!term) {
+  return Astro.rewrite('/404');
+}
+---
+
+<PostsPage lang="en" filter={{ type: 'tag', slug, term }} />

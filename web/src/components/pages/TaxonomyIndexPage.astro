@@ -1,0 +1,151 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getTaxonomy } from '@/lib/api';
+import { localName, localePath, t, type Lang } from '@/i18n';
+
+interface Props {
+  lang: Lang;
+  kind: 'tags' | 'categories' | 'series';
+}
+
+const { lang, kind } = Astro.props;
+const taxonomy = await getTaxonomy(lang);
+
+const items =
+  kind === 'tags' ? taxonomy.tags : kind === 'categories' ? taxonomy.categories : taxonomy.series;
+const visible = items.filter((item) => (item.count ?? 0) > 0);
+
+const titleKey = kind === 'tags' ? 'tags.title' : kind === 'categories' ? 'categories.title' : 'series.title';
+const eyebrowKey =
+  kind === 'tags' ? 'tags.eyebrow' : kind === 'categories' ? 'categories.eyebrow' : 'series.eyebrow';
+const basePath = `/${kind}`;
+---
+
+<BaseLayout lang={lang} title={t(lang, titleKey)}>
+  <section class="page-section">
+    <div class="watermark" aria-hidden="true">{kind}</div>
+    <div class="container">
+      <header class="section-heading rise-in">
+        <span class="section-heading__eyebrow">{t(lang, eyebrowKey)}</span>
+        <h1 class="section-heading__title">{t(lang, titleKey)}</h1>
+      </header>
+
+      {visible.length === 0 && <div class="empty-state mono">NO SIGNAL / EMPTY</div>}
+
+      {
+        kind === 'tags' ? (
+          <div class="tag-cloud">
+            {visible.map((item) => (
+              <a class="tag tag--lg" href={localePath(lang, `${basePath}/${item.slug}`)}>
+                {localName(lang, item)}
+                <b>{item.count}</b>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div class="term-grid">
+            {visible.map((item, i) => (
+              <a
+                class="term-card card card--hover"
+                href={localePath(lang, `${basePath}/${item.slug}`)}
+              >
+                <span class="term-card__index mono">{String(i + 1).padStart(2, '0')}</span>
+                <span class="term-card__name">{localName(lang, item)}</span>
+                {kind === 'series' && (lang === 'zh' ? (item as any).description_zh : (item as any).description_en) && (
+                  <span class="term-card__desc">
+                    {lang === 'zh' ? (item as any).description_zh : (item as any).description_en}
+                  </span>
+                )}
+                <span class="term-card__count mono">
+                  {String(item.count ?? 0).padStart(2, '0')} {t(lang, 'posts.count')}
+                </span>
+              </a>
+            ))}
+          </div>
+        )
+      }
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-section {
+    position: relative;
+    padding: var(--space-20) 0;
+    overflow: hidden;
+  }
+
+  .tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    max-width: 900px;
+  }
+
+  .tag--lg {
+    min-height: 38px;
+    padding: 0 var(--space-4);
+    font-size: 13px;
+  }
+
+  .tag--lg b {
+    font-size: 10px;
+    color: var(--accent-text);
+  }
+
+  .tag--lg:hover b,
+  .tag--lg.tag--active b {
+    color: var(--black);
+  }
+
+  .term-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-5);
+  }
+
+  .term-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-6);
+    text-decoration: none;
+    color: var(--text);
+  }
+
+  .term-card__index {
+    font-size: 11px;
+    color: var(--accent-text);
+    font-weight: 700;
+  }
+
+  .term-card__name {
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: -0.01em;
+  }
+
+  .term-card__desc {
+    font-size: 13px;
+    color: var(--text-2);
+    line-height: 1.6;
+  }
+
+  .term-card__count {
+    margin-top: var(--space-3);
+    font-size: 10px;
+    color: var(--text-3);
+  }
+
+  @media (max-width: 1023px) {
+    .term-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 639px) {
+    .term-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,554 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import '@/styles/prose.css';
+
+const editId = Astro.url.searchParams.get('id');
+const presetGroup = Astro.url.searchParams.get('group') ?? '';
+const presetLang = Astro.url.searchParams.get('lang') ?? 'zh';
+---
+
+<AdminLayout
+  title={editId ? '编辑文章' : '新建文章'}
+  eyebrow="POSTS / EDITOR"
+  active="posts"
+>
+  <div slot="actions" class="editor-actions">
+    <a class="btn btn--sm" href="/admin/posts">← 返回列表</a>
+    <button class="btn btn--sm" id="saveDraftBtn" type="button">保存草稿</button>
+    <button class="btn btn--primary btn--sm" id="publishBtn" type="button">发布 ↗</button>
+  </div>
+
+  <div
+    id="editorRoot"
+    data-edit-id={editId ?? ''}
+    data-preset-group={presetGroup}
+    data-preset-lang={presetLang}
+  >
+    <!-- 元信息 -->
+    <div class="admin-panel">
+      <div class="admin-panel__head">
+        <span>META / 文章信息</span>
+        <span class="mono" id="siblingInfo"></span>
+      </div>
+      <div class="admin-panel__body">
+        <div class="form-grid">
+          <div class="form-field form-field--full">
+            <label class="label" for="fTitle">标题 TITLE</label>
+            <input class="input" id="fTitle" placeholder="文章标题" />
+          </div>
+          <div class="form-field">
+            <label class="label" for="fLang">语言 LANG</label>
+            <select class="select" id="fLang">
+              <option value="zh">中文 (zh)</option>
+              <option value="en">English (en)</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="label" for="fSlug">SLUG（留空自动生成）</label>
+            <input class="input" id="fSlug" placeholder="my-post-slug" />
+          </div>
+          <div class="form-field form-field--full">
+            <label class="label" for="fSummary">摘要 SUMMARY</label>
+            <textarea class="textarea" id="fSummary" rows="2" placeholder="列表与 SEO 描述使用"></textarea>
+          </div>
+          <div class="form-field">
+            <label class="label" for="fCover">封面 COVER URL</label>
+            <div class="cover-row">
+              <input class="input" id="fCover" placeholder="/uploads/…" />
+              <button class="btn" id="coverUploadBtn" type="button">上传</button>
+            </div>
+          </div>
+          <div class="form-field">
+            <label class="label" for="fCategory">分类 CATEGORY</label>
+            <select class="select" id="fCategory">
+              <option value="">（无分类）</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="label" for="fSeries">系列 SERIES</label>
+            <div class="series-row">
+              <select class="select" id="fSeries">
+                <option value="">（不属于系列）</option>
+              </select>
+              <input class="input series-order" id="fSeriesOrder" type="number" min="1" placeholder="#" title="系列内序号" />
+            </div>
+          </div>
+          <div class="form-field">
+            <label class="label">标签 TAGS</label>
+            <div class="tags-box" id="tagsBox"><span style="color:var(--text-3)">加载中…</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑器 -->
+    <div class="admin-panel editor-panel">
+      <div class="admin-panel__head">
+        <span>MARKDOWN / 正文</span>
+        <div class="editor-tools">
+          <button class="btn btn--sm" id="insertImageBtn" type="button">插入图片</button>
+          <button class="btn btn--sm" id="togglePreviewBtn" type="button" aria-pressed="true">
+            分屏预览
+          </button>
+        </div>
+      </div>
+      <div class="editor-split" id="editorSplit">
+        <div class="editor-cm" id="cmHost"></div>
+        <div class="editor-preview" id="previewPane">
+          <div class="prose" id="previewBody"><p style="color:var(--text-3)">开始输入以预览…</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="hiddenFile" accept="image/*" hidden />
+</AdminLayout>
+
+<style>
+  .editor-actions {
+    display: flex;
+    gap: 10px;
+  }
+
+  .cover-row,
+  .series-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .series-order {
+    width: 76px;
+    flex: none;
+  }
+
+  .tags-box {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+    min-height: 48px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .tags-box label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    font-size: 12.5px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .tags-box label:has(input:checked) {
+    background: var(--primary);
+    border-color: var(--black);
+    color: var(--black);
+    font-weight: 600;
+  }
+
+  .tags-box input {
+    display: none;
+  }
+
+  .editor-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 560px;
+  }
+
+  .editor-split.no-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-split.no-preview .editor-preview {
+    display: none;
+  }
+
+  .editor-cm {
+    border-right: 1px solid var(--border);
+    min-width: 0;
+  }
+
+  .editor-cm :global(.cm-editor) {
+    height: 100%;
+    max-height: 72vh;
+    font-size: 14px;
+  }
+
+  .editor-cm :global(.cm-scroller) {
+    font-family: var(--font-data);
+    line-height: 1.7;
+  }
+
+  .editor-preview {
+    padding: var(--space-6);
+    max-height: 72vh;
+    overflow-y: auto;
+    background: var(--bg);
+  }
+
+  .editor-tools {
+    display: flex;
+    gap: 8px;
+  }
+
+  @media (max-width: 1100px) {
+    .editor-split {
+      grid-template-columns: 1fr;
+    }
+    .editor-cm {
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+    }
+  }
+</style>
+
+<script>
+  import { basicSetup } from 'codemirror';
+  import { EditorView, keymap } from '@codemirror/view';
+  import { markdown } from '@codemirror/lang-markdown';
+  import { languages } from '@codemirror/language-data';
+  import { adminFetch, escapeHtml, toast, confirmDanger } from '@/lib/admin-client';
+
+  const root = document.getElementById('editorRoot')!;
+  let editId: number | null = root.dataset.editId ? Number(root.dataset.editId) : null;
+  let groupId = root.dataset.presetGroup || '';
+
+  // ---- 表单元素 ----
+  const fTitle = document.getElementById('fTitle') as HTMLInputElement;
+  const fLang = document.getElementById('fLang') as HTMLSelectElement;
+  const fSlug = document.getElementById('fSlug') as HTMLInputElement;
+  const fSummary = document.getElementById('fSummary') as HTMLTextAreaElement;
+  const fCover = document.getElementById('fCover') as HTMLInputElement;
+  const fCategory = document.getElementById('fCategory') as HTMLSelectElement;
+  const fSeries = document.getElementById('fSeries') as HTMLSelectElement;
+  const fSeriesOrder = document.getElementById('fSeriesOrder') as HTMLInputElement;
+  const tagsBox = document.getElementById('tagsBox')!;
+  const siblingInfo = document.getElementById('siblingInfo')!;
+  const hiddenFile = document.getElementById('hiddenFile') as HTMLInputElement;
+
+  fLang.value = root.dataset.presetLang || 'zh';
+
+  // ---- CodeMirror ----
+  const cmTheme = EditorView.theme({
+    '&': { backgroundColor: 'transparent' },
+    '.cm-content': { padding: '16px 4px', caretColor: 'var(--text)' },
+    '.cm-gutters': {
+      backgroundColor: 'var(--surface-2)',
+      color: 'var(--text-3)',
+      border: 'none',
+      fontSize: '11px',
+    },
+    '&.cm-focused': { outline: 'none' },
+    '.cm-activeLine': { backgroundColor: 'rgba(244, 246, 0, 0.06)' },
+    '.cm-activeLineGutter': { backgroundColor: 'rgba(244, 246, 0, 0.10)' },
+    '.cm-cursor': { borderLeftColor: 'var(--text)' },
+    '.cm-selectionBackground': { backgroundColor: 'rgba(244, 246, 0, 0.25) !important' },
+  });
+
+  let previewTimer: ReturnType<typeof setTimeout>;
+  const view = new EditorView({
+    parent: document.getElementById('cmHost')!,
+    extensions: [
+      basicSetup,
+      markdown({ codeLanguages: languages }),
+      EditorView.lineWrapping,
+      cmTheme,
+      keymap.of([
+        {
+          key: 'Mod-s',
+          run: () => {
+            save('draft');
+            return true;
+          },
+        },
+      ]),
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) schedulePreview();
+      }),
+      EditorView.domEventHandlers({
+        paste: (event) => {
+          const file = Array.from(event.clipboardData?.files ?? []).find((f) =>
+            f.type.startsWith('image/')
+          );
+          if (file) {
+            event.preventDefault();
+            uploadAndInsert(file);
+            return true;
+          }
+          return false;
+        },
+        drop: (event) => {
+          const file = Array.from(event.dataTransfer?.files ?? []).find((f) =>
+            f.type.startsWith('image/')
+          );
+          if (file) {
+            event.preventDefault();
+            uploadAndInsert(file);
+            return true;
+          }
+          return false;
+        },
+      }),
+    ],
+  });
+
+  function setDoc(content: string) {
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
+  }
+
+  function insertAtCursor(text: string) {
+    const range = view.state.selection.main;
+    view.dispatch({
+      changes: { from: range.from, to: range.to, insert: text },
+      selection: { anchor: range.from + text.length },
+    });
+    view.focus();
+  }
+
+  // ---- 预览 ----
+  const previewBody = document.getElementById('previewBody')!;
+  function schedulePreview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(async () => {
+      const md = view.state.doc.toString();
+      if (!md.trim()) {
+        previewBody.innerHTML = '<p style="color:var(--text-3)">开始输入以预览…</p>';
+        return;
+      }
+      try {
+        const res = await adminFetch<{ html: string }>('/api/admin/render', {
+          method: 'POST',
+          body: JSON.stringify({ markdown: md }),
+        });
+        previewBody.innerHTML = res.html;
+      } catch {
+        /* 预览失败静默 */
+      }
+    }, 500);
+  }
+
+  document.getElementById('togglePreviewBtn')!.addEventListener('click', (e) => {
+    const split = document.getElementById('editorSplit')!;
+    const btn = e.currentTarget as HTMLButtonElement;
+    const off = split.classList.toggle('no-preview');
+    btn.setAttribute('aria-pressed', String(!off));
+  });
+
+  // ---- 图片上传 ----
+  async function uploadFile(file: File): Promise<{ url: string }> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return adminFetch<{ url: string }>('/api/admin/uploads', { method: 'POST', body: form });
+  }
+
+  async function uploadAndInsert(file: File) {
+    toast('图片上传中…');
+    try {
+      const res = await uploadFile(file);
+      insertAtCursor(`![${file.name.replace(/\.[^.]+$/, '')}](${res.url})\n`);
+      toast('图片已插入');
+    } catch (err) {
+      toast(`上传失败：${(err as Error).message}`, 'error');
+    }
+  }
+
+  document.getElementById('insertImageBtn')!.addEventListener('click', () => {
+    hiddenFile.dataset.target = 'editor';
+    hiddenFile.click();
+  });
+  document.getElementById('coverUploadBtn')!.addEventListener('click', () => {
+    hiddenFile.dataset.target = 'cover';
+    hiddenFile.click();
+  });
+  hiddenFile.addEventListener('change', async () => {
+    const file = hiddenFile.files?.[0];
+    hiddenFile.value = '';
+    if (!file) return;
+    if (hiddenFile.dataset.target === 'cover') {
+      try {
+        const res = await uploadFile(file);
+        fCover.value = res.url;
+        toast('封面已上传');
+      } catch (err) {
+        toast(`上传失败：${(err as Error).message}`, 'error');
+      }
+    } else {
+      uploadAndInsert(file);
+    }
+  });
+
+  // ---- 分类 / 标签 / 系列 ----
+  interface Term {
+    id: number;
+    slug: string;
+    name_zh: string;
+    name_en: string;
+  }
+
+  async function loadTerms() {
+    const [cats, tags, series] = await Promise.all([
+      adminFetch<{ items: Term[] }>('/api/admin/categories'),
+      adminFetch<{ items: Term[] }>('/api/admin/tags'),
+      adminFetch<{ items: Term[] }>('/api/admin/series'),
+    ]);
+    for (const c of cats.items) {
+      const opt = document.createElement('option');
+      opt.value = String(c.id);
+      opt.textContent = `${c.name_zh} / ${c.name_en}`;
+      fCategory.appendChild(opt);
+    }
+    for (const s of series.items) {
+      const opt = document.createElement('option');
+      opt.value = String(s.id);
+      opt.textContent = `${s.name_zh} / ${s.name_en}`;
+      fSeries.appendChild(opt);
+    }
+    tagsBox.innerHTML = tags.items.length
+      ? tags.items
+          .map(
+            (tag) => `
+              <label>
+                <input type="checkbox" value="${tag.id}" />
+                <span>${escapeHtml(tag.name_zh)}</span>
+              </label>`
+          )
+          .join('')
+      : '<span style="color:var(--text-3)">暂无标签，可先到「分类 / 标签 / 系列」页创建</span>';
+  }
+
+  function selectedTagIds(): number[] {
+    return Array.from(tagsBox.querySelectorAll<HTMLInputElement>('input:checked')).map((el) =>
+      Number(el.value)
+    );
+  }
+
+  // ---- 加载已有文章 ----
+  interface AdminPostDetail {
+    id: number;
+    group_id: string;
+    lang: string;
+    slug: string;
+    title: string;
+    summary: string | null;
+    cover: string | null;
+    content_md: string;
+    status: string;
+    category_id: number | null;
+    series_id: number | null;
+    series_order: number | null;
+    tag_ids: number[];
+    siblings: { id: number; lang: string; title: string; status: string }[];
+  }
+
+  let currentStatus = 'draft';
+
+  async function loadPost() {
+    if (!editId) {
+      renderSiblings([]);
+      return;
+    }
+    try {
+      const post = await adminFetch<AdminPostDetail>(`/api/admin/posts/${editId}`);
+      groupId = post.group_id;
+      currentStatus = post.status;
+      fTitle.value = post.title;
+      fLang.value = post.lang;
+      fSlug.value = post.slug;
+      fSummary.value = post.summary ?? '';
+      fCover.value = post.cover ?? '';
+      fCategory.value = post.category_id ? String(post.category_id) : '';
+      fSeries.value = post.series_id ? String(post.series_id) : '';
+      fSeriesOrder.value = post.series_order ? String(post.series_order) : '';
+      for (const id of post.tag_ids) {
+        const box = tagsBox.querySelector<HTMLInputElement>(`input[value="${id}"]`);
+        if (box) box.checked = true;
+      }
+      setDoc(post.content_md);
+      schedulePreview();
+      renderSiblings(post.siblings);
+    } catch (err) {
+      toast(`文章加载失败：${(err as Error).message}`, 'error');
+    }
+  }
+
+  function renderSiblings(siblings: AdminPostDetail['siblings']) {
+    if (!editId) {
+      siblingInfo.textContent = '';
+      return;
+    }
+    if (siblings.length > 0) {
+      siblingInfo.innerHTML = siblings
+        .map(
+          (s) =>
+            `<a href="/admin/posts/edit?id=${s.id}" style="color:var(--accent-text)">${s.lang.toUpperCase()} 版本 →</a>`
+        )
+        .join(' ');
+    } else {
+      const target = fLang.value === 'zh' ? 'en' : 'zh';
+      siblingInfo.innerHTML = `<a href="/admin/posts/edit?group=${groupId}&lang=${target}" style="color:var(--accent-text)">+ 创建 ${target.toUpperCase()} 翻译版本</a>`;
+    }
+  }
+
+  // ---- 保存 ----
+  async function save(status: 'draft' | 'published') {
+    const title = fTitle.value.trim();
+    if (!title) {
+      toast('请填写标题', 'error');
+      return;
+    }
+    const payload = {
+      lang: fLang.value,
+      slug: fSlug.value.trim() || null,
+      title,
+      summary: fSummary.value.trim() || null,
+      cover: fCover.value.trim() || null,
+      content_md: view.state.doc.toString(),
+      status,
+      category_id: fCategory.value ? Number(fCategory.value) : null,
+      series_id: fSeries.value ? Number(fSeries.value) : null,
+      series_order: fSeriesOrder.value ? Number(fSeriesOrder.value) : null,
+      tag_ids: selectedTagIds(),
+      group_id: groupId || null,
+    };
+    try {
+      if (editId) {
+        await adminFetch(`/api/admin/posts/${editId}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+        toast(status === 'published' ? '已发布' : '草稿已保存');
+        currentStatus = status;
+      } else {
+        const res = await adminFetch<{ id: number; slug: string }>('/api/admin/posts', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        toast(status === 'published' ? '已发布' : '草稿已保存');
+        editId = res.id;
+        history.replaceState(null, '', `/admin/posts/edit?id=${res.id}`);
+        loadPost();
+      }
+    } catch (err) {
+      toast(`保存失败：${(err as Error).message}`, 'error');
+    }
+  }
+
+  document.getElementById('saveDraftBtn')!.addEventListener('click', () => {
+    // 已发布文章点「保存草稿」会下线为草稿，需确认
+    if (currentStatus === 'published' && !confirmDanger('该文章已发布，保存为草稿会将其下线，继续？')) {
+      return;
+    }
+    save('draft');
+  });
+  document.getElementById('publishBtn')!.addEventListener('click', () => save('published'));
+
+  // ---- 初始化 ----
+  (async () => {
+    await loadTerms();
+    await loadPost();
+  })();
+</script>

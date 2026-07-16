@@ -1,0 +1,45 @@
+---
+interface Props {
+  page: number;
+  total: number;
+  pageSize: number;
+  /** 生成某页链接 */
+  makeHref: (page: number) => string;
+}
+
+const { page, total, pageSize, makeHref } = Astro.props;
+const totalPages = Math.max(1, Math.ceil(total / pageSize));
+const hasPrev = page > 1;
+const hasNext = page < totalPages;
+---
+
+{
+  totalPages > 1 && (
+    <nav class="pagination" aria-label="分页">
+      {hasPrev ? (
+        <a class="btn btn--sm" href={makeHref(page - 1)}>
+          ← PREV
+        </a>
+      ) : (
+        <span class="btn btn--sm is-disabled">← PREV</span>
+      )}
+      <span class="pagination__info">
+        {String(page).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}
+      </span>
+      {hasNext ? (
+        <a class="btn btn--sm" href={makeHref(page + 1)}>
+          NEXT →
+        </a>
+      ) : (
+        <span class="btn btn--sm is-disabled">NEXT →</span>
+      )}
+    </nav>
+  )
+}
+
+<style>
+  .is-disabled {
+    opacity: 0.35;
+    pointer-events: none;
+  }
+</style>

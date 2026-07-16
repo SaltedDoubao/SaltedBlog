@@ -1,0 +1,155 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getFriends } from '@/lib/api';
+import { t, type Lang } from '@/i18n';
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const { items } = await getFriends();
+---
+
+<BaseLayout lang={lang} title={t(lang, 'friends.title')}>
+  <section class="page-section">
+    <div class="watermark" aria-hidden="true">FRIENDS</div>
+    <div class="container">
+      <header class="section-heading rise-in">
+        <span class="section-heading__eyebrow">{t(lang, 'friends.eyebrow')}</span>
+        <h1 class="section-heading__title">{t(lang, 'friends.title')}</h1>
+      </header>
+
+      {
+        items.length === 0 ? (
+          <div class="empty-state mono">NO SIGNAL / {t(lang, 'friends.empty')}</div>
+        ) : (
+          <div class="friends-grid">
+            {items.map((friend, i) => (
+              <a
+                class="friend-card card card--hover"
+                href={friend.url}
+                target="_blank"
+                rel="noopener"
+              >
+                <span class="friend-card__index mono">{String(i + 1).padStart(2, '0')}</span>
+                {friend.avatar ? (
+                  <img class="friend-card__avatar" src={friend.avatar} alt="" loading="lazy" />
+                ) : (
+                  <span class="friend-card__avatar friend-card__avatar--fallback">
+                    {friend.name.slice(0, 1)}
+                  </span>
+                )}
+                <span class="friend-card__body">
+                  <b>{friend.name}</b>
+                  {friend.description && <small>{friend.description}</small>}
+                </span>
+                <span class="friend-card__arrow" aria-hidden="true">
+                  ↗
+                </span>
+              </a>
+            ))}
+          </div>
+        )
+      }
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-section {
+    position: relative;
+    padding: var(--space-20) 0;
+    overflow: hidden;
+    min-height: 60vh;
+  }
+
+  .friends-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-5);
+  }
+
+  .friend-card {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-5);
+    text-decoration: none;
+    color: var(--text);
+  }
+
+  .friend-card__index {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 9px;
+    color: var(--text-3);
+  }
+
+  .friend-card__avatar {
+    width: 52px;
+    height: 52px;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    flex: none;
+  }
+
+  .friend-card__avatar--fallback {
+    display: grid;
+    place-items: center;
+    background: var(--primary);
+    color: var(--black);
+    font-weight: 900;
+    font-size: 20px;
+  }
+
+  .friend-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .friend-card__body b {
+    font-size: 16px;
+  }
+
+  .friend-card__body small {
+    font-size: 12.5px;
+    color: var(--text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .friend-card__arrow {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border-strong);
+    transition: all var(--duration) var(--ease);
+  }
+
+  .friend-card:hover .friend-card__arrow {
+    background: var(--primary);
+    color: var(--black);
+    border-color: var(--black);
+  }
+
+  @media (max-width: 1023px) {
+    .friends-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 639px) {
+    .friends-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

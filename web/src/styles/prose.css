@@ -1,0 +1,310 @@
+/* ============================================
+   文章正文（Markdown 渲染结果）样式
+   ============================================ */
+
+.prose {
+  max-width: var(--prose-width);
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  position: relative;
+  margin: 2.2em 0 0.8em;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  scroll-margin-top: calc(var(--header-h) + 24px);
+}
+
+.prose h1 {
+  font-size: 32px;
+  font-weight: 900;
+}
+
+.prose h2 {
+  font-size: 26px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.prose h2::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 48px;
+  height: 3px;
+  background: var(--primary);
+}
+
+.prose h3 {
+  font-size: 21px;
+}
+
+.prose h4 {
+  font-size: 17px;
+}
+
+.prose h1 .anchor,
+.prose h2 .anchor,
+.prose h3 .anchor,
+.prose h4 .anchor,
+.prose h5 .anchor,
+.prose h6 .anchor {
+  position: absolute;
+  top: 0;
+  left: -1em;
+  width: 1em;
+  text-decoration: none;
+  opacity: 0;
+}
+
+.prose p {
+  margin: 1em 0;
+}
+
+.prose a:not(.anchor) {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--primary);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  transition: background-color var(--duration-fast) var(--ease);
+}
+
+.prose a:not(.anchor):hover {
+  background: var(--primary);
+  color: var(--black);
+  text-decoration-color: var(--black);
+}
+
+.prose strong {
+  font-weight: 800;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.6em;
+  margin: 1em 0;
+}
+
+.prose li {
+  margin: 0.35em 0;
+}
+
+.prose li::marker {
+  color: var(--accent-text);
+  font-weight: 700;
+}
+
+.prose blockquote {
+  margin: 1.4em 0;
+  padding: var(--space-3) var(--space-5);
+  border-left: 3px solid var(--primary);
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.prose blockquote p {
+  margin: 0.4em 0;
+}
+
+.prose hr {
+  margin: 2.4em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.prose img {
+  display: block;
+  margin: 1.6em auto;
+  border: 1px solid var(--border);
+}
+
+.prose table {
+  width: 100%;
+  margin: 1.6em 0;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.prose th,
+.prose td {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.prose th {
+  background: var(--surface-2);
+  font-family: var(--font-data);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.prose tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--surface-2) 50%, transparent);
+}
+
+/* ---- 行内代码 ---- */
+
+.prose code {
+  font-family: var(--font-data);
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.88em;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  background: var(--code-inline-bg);
+  color: var(--code-inline-text);
+}
+
+/* ---- 代码块 ---- */
+
+.prose pre {
+  position: relative;
+  margin: 1.6em 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  overflow: hidden;
+}
+
+.prose pre code {
+  display: block;
+  padding: var(--space-5);
+  padding-top: calc(var(--space-5) + 14px);
+  overflow-x: auto;
+  background: transparent;
+  color: var(--code-text);
+  font-size: 13.5px;
+  line-height: 1.65;
+  tab-size: 4;
+}
+
+/* 代码块顶部工具条（由脚本注入 lang 标识与复制按钮） */
+.code-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 6px 14px;
+  pointer-events: none;
+}
+
+.code-toolbar__lang {
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.code-toolbar__copy {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.75);
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+.code-toolbar__copy:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.code-toolbar__copy.is-copied {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--black);
+}
+
+/* ---- highlight.js 配色（CSS 变量主题，深浅通用的深底代码块） ---- */
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-meta {
+  color: var(--hl-keyword, #f4a4ff);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--hl-string, #b8e986);
+}
+.hljs-number,
+.hljs-literal {
+  color: var(--hl-number, #ffd479);
+}
+.hljs-comment,
+.hljs-quote,
+.hljs-deletion {
+  color: var(--hl-comment, #7d888a);
+  font-style: italic;
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-title.class_,
+.hljs-function {
+  color: var(--hl-function, #7cd7ff);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type {
+  color: var(--hl-attr, #ffd479);
+}
+.hljs-symbol,
+.hljs-bullet,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--hl-symbol, #f4f600);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
+}
+
+/* ---- 脚注 / 任务列表 ---- */
+
+.prose .footnote-definition {
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.prose input[type="checkbox"] {
+  accent-color: var(--primary);
+}

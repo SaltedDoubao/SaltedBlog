@@ -1,0 +1,206 @@
+---
+import type { PostListItem } from '@/lib/api';
+import { formatDate, localName, localePath, type Lang } from '@/i18n';
+
+interface Props {
+  lang: Lang;
+  post: PostListItem;
+  /** 卡片是否显示封面区（无封面时显示程序化装饰底纹） */
+  showMedia?: boolean;
+  index?: string;
+}
+
+const { lang, post, showMedia = true, index } = Astro.props;
+const href = localePath(lang, `/posts/${post.slug}`);
+const date = formatDate(lang, post.published_at);
+const categoryName = localName(lang, post.category);
+/** 无封面时根据文章 id 轮换三种 CSS 装饰纹理 */
+const artVariant = (post.id % 3) + 1;
+---
+
+<article class="post-card card card--hover">
+  {
+    showMedia && (
+      <a class="post-card__media" href={href} tabindex="-1" aria-hidden="true">
+        {post.cover ? (
+          <img src={post.cover} alt="" loading="lazy" />
+        ) : (
+          <div class={`post-card__art post-card__art--${artVariant}`} />
+        )}
+      </a>
+    )
+  }
+  <div class="post-card__body">
+    <div class="post-card__tagline mono">
+      {index && <span class="post-card__index">{index}</span>}
+      {date && <span>{date}</span>}
+      {categoryName && <span class="post-card__cat">/ {categoryName}</span>}
+    </div>
+    <h3 class="post-card__title">
+      <a href={href}>{post.title}</a>
+    </h3>
+    {post.summary && <p class="post-card__summary">{post.summary}</p>}
+    <div class="post-card__footer">
+      <div class="post-card__tags">
+        {
+          post.tags.slice(0, 3).map((tag) => (
+            <a class="tag" href={localePath(lang, `/tags/${tag.slug}`)}>
+              {localName(lang, tag)}
+            </a>
+          ))
+        }
+      </div>
+      <span class="post-card__arrow" aria-hidden="true">↗</span>
+    </div>
+  </div>
+</article>
+
+<style>
+  .post-card {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .post-card__media {
+    display: block;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+
+  .post-card__media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 500ms var(--ease);
+  }
+
+  .post-card:hover .post-card__media img {
+    transform: scale(1.035);
+  }
+
+  .post-card__art {
+    width: 100%;
+    height: 100%;
+    transition: transform 500ms var(--ease);
+  }
+
+  .post-card:hover .post-card__art {
+    transform: scale(1.04);
+  }
+
+  .post-card__art--1 {
+    background:
+      linear-gradient(112deg, transparent 0 43%, var(--primary) 43.5% 45%, transparent 45.5%),
+      radial-gradient(circle at 69% 39%, var(--surface) 0 6%, transparent 6.4%),
+      linear-gradient(155deg, #cfd4d1 0 38%, #6a7373 38.5% 62%, #202629 62.5%);
+  }
+
+  .post-card__art--2 {
+    background:
+      repeating-linear-gradient(115deg, transparent 0 24px, rgba(244, 246, 0, 0.65) 25px 27px),
+      radial-gradient(circle at 35% 42%, #bbc3c1 0 13%, transparent 13.5%),
+      linear-gradient(145deg, #242a2d, #899292);
+  }
+
+  .post-card__art--3 {
+    background:
+      linear-gradient(90deg, transparent 0 49%, rgba(255, 255, 255, 0.55) 49.4% 50%, transparent 50.3%),
+      repeating-linear-gradient(0deg, transparent 0 18px, rgba(255, 255, 255, 0.14) 19px 20px),
+      linear-gradient(130deg, #707b7c 0 45%, #252a2e 45.5%);
+  }
+
+  .post-card__body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    padding: var(--space-6);
+  }
+
+  .post-card__tagline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 10px;
+    color: var(--text-2);
+  }
+
+  .post-card__tagline::before {
+    content: '';
+    width: 24px;
+    height: 4px;
+    background: var(--primary);
+    flex: none;
+  }
+
+  .post-card__index {
+    color: var(--accent-text);
+    font-weight: 700;
+  }
+
+  .post-card__cat {
+    color: var(--text-3);
+  }
+
+  .post-card__title {
+    margin: var(--space-3) 0 var(--space-2);
+    font-size: clamp(18px, 2vw, 22px);
+    line-height: 1.3;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+
+  .post-card__title a {
+    text-decoration: none;
+    color: var(--text);
+  }
+
+  .post-card__title a:hover {
+    background: var(--primary);
+    color: var(--black);
+  }
+
+  .post-card__summary {
+    margin: 0 0 var(--space-4);
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--text-2);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .post-card__footer {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .post-card__tags {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .post-card__arrow {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border: 1px solid var(--border-strong);
+    transition: all var(--duration) var(--ease);
+  }
+
+  .post-card:hover .post-card__arrow {
+    background: var(--primary);
+    color: var(--black);
+    border-color: var(--black);
+    transform: translate(2px, -2px);
+    box-shadow: -3px 3px 0 var(--border-strong);
+  }
+</style>

@@ -1,0 +1,34 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getAbout } from '@/lib/api';
+import { t, type Lang } from '@/i18n';
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const { html } = await getAbout(lang);
+---
+
+<BaseLayout lang={lang} title={t(lang, 'about.title')}>
+  <section class="page-section">
+    <div class="watermark" aria-hidden="true">ABOUT</div>
+    <div class="container">
+      <header class="section-heading rise-in">
+        <span class="section-heading__eyebrow">{t(lang, 'about.eyebrow')}</span>
+        <h1 class="section-heading__title">{t(lang, 'about.title')}</h1>
+      </header>
+      <div class="about-body prose" set:html={html} />
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-section {
+    position: relative;
+    padding: var(--space-20) 0;
+    overflow: hidden;
+    min-height: 60vh;
+  }
+</style>

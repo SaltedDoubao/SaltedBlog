@@ -1,0 +1,199 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="文章管理" eyebrow="POSTS / MANAGE" active="posts">
+  <a slot="actions" class="btn btn--primary btn--sm" href="/admin/posts/edit">+ 新建文章</a>
+
+  <div class="admin-panel">
+    <div class="admin-panel__head">
+      <span>FILTER</span>
+      <div class="filters">
+        <select class="select select--sm" id="filterLang">
+          <option value="">全部语言</option>
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+        </select>
+        <select class="select select--sm" id="filterStatus">
+          <option value="">全部状态</option>
+          <option value="published">已发布</option>
+          <option value="draft">草稿</option>
+        </select>
+        <input class="input input--sm" id="filterQ" placeholder="搜索标题…" />
+      </div>
+    </div>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th style="width:48px">ID</th>
+          <th>标题</th>
+          <th style="width:70px">语言</th>
+          <th style="width:86px">状态</th>
+          <th style="width:130px">分类</th>
+          <th style="width:80px">阅读</th>
+          <th style="width:110px">更新时间</th>
+          <th style="width:170px">操作</th>
+        </tr>
+      </thead>
+      <tbody id="postsBody">
+        <tr><td colspan="8" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
+      </tbody>
+    </table>
+    <div class="admin-panel__body list-pager">
+      <button class="btn btn--sm" id="pagerPrev" type="button">← PREV</button>
+      <span class="mono" id="pagerInfo">-- / --</span>
+      <button class="btn btn--sm" id="pagerNext" type="button">NEXT →</button>
+    </div>
+  </div>
+</AdminLayout>
+
+<style>
+  .filters {
+    display: flex;
+    gap: 10px;
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
+  .select--sm,
+  .input--sm {
+    min-height: 34px;
+    padding: 4px 10px;
+    font-size: 13px;
+    width: auto;
+  }
+
+  .input--sm {
+    width: 200px;
+  }
+
+  .list-pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+  }
+</style>
+
+<script>
+  import { adminFetch, confirmDanger, escapeHtml, toast } from '@/lib/admin-client';
+
+  interface AdminPost {
+    id: number;
+    lang: string;
+    slug: string;
+    title: string;
+    status: string;
+    view_count: number;
+    updated_at: string;
+    category: { name_zh: string } | null;
+  }
+
+  interface ListRes {
+    items: AdminPost[];
+    total: number;
+    page: number;
+    page_size: number;
+  }
+
+  const state = { page: 1, lang: '', status: '', q: '' };
+  const pageSize = 20;
+  let totalPages = 1;
+
+  const body = document.getElementById('postsBody')!;
+  const pagerInfo = document.getElementById('pagerInfo')!;
+
+  async function load() {
+    const params = new URLSearchParams({ page: String(state.page), page_size: String(pageSize) });
+    if (state.lang) params.set('lang', state.lang);
+    if (state.status) params.set('status', state.status);
+    if (state.q) params.set('q', state.q);
+
+    let res: ListRes;
+    try {
+      res = await adminFetch<ListRes>(`/api/admin/posts?${params}`);
+    } catch (err) {
+      toast(`加载失败：${(err as Error).message}`, 'error');
+      return;
+    }
+
+    totalPages = Math.max(1, Math.ceil(res.total / pageSize));
+    pagerInfo.textContent = `${String(res.page).padStart(2, '0')} / ${String(totalPages).padStart(2, '0')}`;
+
+    if (res.items.length === 0) {
+      body.innerHTML =
+        '<tr><td colspan="8" style="text-align:center;color:var(--text-3)">暂无文章</td></tr>';
+      return;
+    }
+
+    body.innerHTML = res.items
+      .map((post) => {
+        const viewHref = post.lang === 'zh' ? `/posts/${post.slug}` : `/en/posts/${post.slug}`;
+        return `
+          <tr>
+            <td class="mono">${post.id}</td>
+            <td><a href="/admin/posts/edit?id=${post.id}" style="color:inherit;font-weight:600;text-decoration:none">${escapeHtml(post.title)}</a></td>
+            <td><span class="badge badge--${post.lang}">${post.lang.toUpperCase()}</span></td>
+            <td><span class="badge badge--${post.status}">${post.status === 'published' ? '已发布' : '草稿'}</span></td>
+            <td>${post.category ? escapeHtml(post.category.name_zh) : '<span style="color:var(--text-3)">—</span>'}</td>
+            <td class="mono">${post.view_count}</td>
+            <td class="mono">${post.updated_at.slice(0, 10)}</td>
+            <td>
+              <div class="cell-actions">
+                <a class="btn btn--sm" href="/admin/posts/edit?id=${post.id}">编辑</a>
+                ${post.status === 'published' ? `<a class="btn btn--sm" href="${viewHref}" target="_blank">查看</a>` : ''}
+                <button class="btn btn--sm btn--danger" data-del="${post.id}" type="button">删除</button>
+              </div>
+            </td>
+          </tr>`;
+      })
+      .join('');
+
+    body.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirmDanger('确认删除这篇文章？此操作不可恢复。')) return;
+        try {
+          await adminFetch(`/api/admin/posts/${btn.dataset.del}`, { method: 'DELETE' });
+          toast('已删除');
+          load();
+        } catch (err) {
+          toast(`删除失败：${(err as Error).message}`, 'error');
+        }
+      });
+    });
+  }
+
+  document.getElementById('filterLang')!.addEventListener('change', (e) => {
+    state.lang = (e.target as HTMLSelectElement).value;
+    state.page = 1;
+    load();
+  });
+  document.getElementById('filterStatus')!.addEventListener('change', (e) => {
+    state.status = (e.target as HTMLSelectElement).value;
+    state.page = 1;
+    load();
+  });
+  let qTimer: ReturnType<typeof setTimeout>;
+  document.getElementById('filterQ')!.addEventListener('input', (e) => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => {
+      state.q = (e.target as HTMLInputElement).value.trim();
+      state.page = 1;
+      load();
+    }, 350);
+  });
+  document.getElementById('pagerPrev')!.addEventListener('click', () => {
+    if (state.page > 1) {
+      state.page -= 1;
+      load();
+    }
+  });
+  document.getElementById('pagerNext')!.addEventListener('click', () => {
+    if (state.page < totalPages) {
+      state.page += 1;
+      load();
+    }
+  });
+
+  load();
+</script>
