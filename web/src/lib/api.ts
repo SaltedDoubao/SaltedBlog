@@ -3,7 +3,7 @@
 const API_URL: string =
   (typeof process !== 'undefined' && process.env?.API_URL) ||
   import.meta.env.API_URL ||
-  'http://127.0.0.1:8080';
+  'http://127.0.0.1:8787';
 
 export interface CategoryOut {
   id: number;

@@ -21,7 +21,7 @@ impl Config {
     pub fn from_env() -> Self {
         Self {
             database_url: env_or("DATABASE_URL", "sqlite://data/blog.db?mode=rwc"),
-            bind_addr: env_or("BIND_ADDR", "0.0.0.0:8080"),
+            bind_addr: env_or("BIND_ADDR", "0.0.0.0:8787"),
             upload_dir: PathBuf::from(env_or("UPLOAD_DIR", "data/uploads")),
             upload_max_mb: env_or("UPLOAD_MAX_MB", "20").parse().unwrap_or(20),
             session_ttl_days: env_or("SESSION_TTL_DAYS", "30").parse().unwrap_or(30),

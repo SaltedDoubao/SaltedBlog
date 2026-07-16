@@ -15,8 +15,8 @@ export default defineConfig({
     server: {
       // dev 模式下将浏览器发起的 /api、/uploads 请求代理到 Rust API
       proxy: {
-        '/api': process.env.API_URL ?? 'http://127.0.0.1:8080',
-        '/uploads': process.env.API_URL ?? 'http://127.0.0.1:8080',
+        '/api': process.env.API_URL ?? 'http://127.0.0.1:8787',
+        '/uploads': process.env.API_URL ?? 'http://127.0.0.1:8787',
       },
     },
   },

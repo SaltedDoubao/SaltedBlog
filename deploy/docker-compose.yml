@@ -31,7 +31,7 @@ services:
       dockerfile: deploy/Dockerfile.web
     restart: unless-stopped
     environment:
-      API_URL: http://api:8080
+      API_URL: http://api:8787
       PUBLIC_SITE_URL: https://${SITE_DOMAIN}
       PORT: "4321"
     depends_on:
@@ -45,7 +45,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-salted}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@postgres:5432/${POSTGRES_DB:-saltedblog}
-      BIND_ADDR: 0.0.0.0:8080
+      BIND_ADDR: 0.0.0.0:8787
       UPLOAD_DIR: /data/uploads
       UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-20}
       SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}

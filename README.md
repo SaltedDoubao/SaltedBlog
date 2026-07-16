@@ -71,7 +71,7 @@ npm install
 npm run dev
 ```
 
-- 前台：<http://localhost:4321>（dev 服务器已将 `/api`、`/uploads` 代理到 8080）
+- 前台：<http://localhost:4321>（dev 服务器已将 `/api`、`/uploads` 代理到 8787）
 - 后台：<http://localhost:4321/admin>，账号密码见 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD`
 - 管理员账号只在 `users` 表为空时自动创建；改密码可清空 `users` 表后重启 API
 
@@ -119,7 +119,7 @@ docker compose cp /tmp/restore/uploads/. api:/data/uploads
 |---|---|---|
 | `DATABASE_URL` | `sqlite://data/blog.db?mode=rwc` 或 `postgres://…` | SQLite |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 首次启动引导创建的管理员 | admin / 空 |
-| `API_URL` | Web SSR 访问 API 的内部地址 | `http://127.0.0.1:8080` |
+| `API_URL` | Web SSR 访问 API 的内部地址 | `http://127.0.0.1:8787` |
 | `PUBLIC_SITE_URL` | 站点对外地址（canonical / RSS / sitemap） | `http://localhost:4321` |
 | `SITE_DOMAIN` | 域名（仅 Docker，供 Caddy 使用） | — |
 | `UPLOAD_MAX_MB` | 上传大小上限 | 20 |

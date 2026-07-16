@@ -5,7 +5,7 @@
 	# API 与上传文件走 Rust 服务
 	@backend path /api/* /uploads/* /healthz
 	handle @backend {
-		reverse_proxy api:8080
+		reverse_proxy api:8787
 	}
 
 	# 其余流量走 Astro SSR
