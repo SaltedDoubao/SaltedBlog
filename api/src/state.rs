@@ -27,12 +27,11 @@ impl LoginLimiter {
     pub fn is_blocked(&self, ip: IpAddr) -> bool {
         let mut map = self.attempts.lock().unwrap();
         let now = Instant::now();
-        if let Some(list) = map.get_mut(&ip) {
+        map.retain(|_, list| {
             list.retain(|t| now.duration_since(*t).as_secs() < WINDOW_SECS);
-            list.len() >= MAX_ATTEMPTS
-        } else {
-            false
-        }
+            !list.is_empty()
+        });
+        map.get(&ip).is_some_and(|list| list.len() >= MAX_ATTEMPTS)
     }
 
     pub fn record_failure(&self, ip: IpAddr) {
