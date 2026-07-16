@@ -13,7 +13,7 @@ use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::entities::{friends, page_views, posts, settings, uploads};
+use crate::entities::{friends, page_views, posts, settings, site_icons, uploads};
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
@@ -24,6 +24,9 @@ pub fn router() -> Router<AppState> {
         .route("/settings", get(get_settings).put(put_settings))
         .route("/uploads", get(list_uploads).post(upload_file))
         .route("/uploads/{id}", axum::routing::delete(delete_upload))
+        .route("/site-icons", get(list_site_icons).post(upload_site_icon))
+        .route("/site-icons/{id}/activate", put(activate_site_icon))
+        .route("/site-icons/{id}", axum::routing::delete(delete_site_icon))
         .route("/stats/dashboard", get(stats_dashboard))
 }
 
@@ -42,7 +45,7 @@ async fn list_friends(State(state): State<AppState>) -> ApiResult<impl IntoRespo
     let items = friends::Entity::find()
         .order_by_asc(friends::Column::SortOrder)
         .order_by_asc(friends::Column::Id)
-        .all(&state.db)
+        .all(&state.db())
         .await?;
     Ok(Json(json!({ "items": items })))
 }
@@ -63,7 +66,7 @@ async fn create_friend(
         created_at: Set(Utc::now().into()),
         ..Default::default()
     };
-    let created = model.insert(&state.db).await?;
+    let created = model.insert(&state.db()).await?;
     Ok((StatusCode::CREATED, Json(json!({ "id": created.id }))))
 }
 
@@ -73,7 +76,7 @@ async fn update_friend(
     Json(input): Json<FriendInput>,
 ) -> ApiResult<impl IntoResponse> {
     let existing = friends::Entity::find_by_id(id)
-        .one(&state.db)
+        .one(&state.db())
         .await?
         .ok_or_else(ApiError::not_found)?;
     let mut model: friends::ActiveModel = existing.into();
@@ -82,7 +85,7 @@ async fn update_friend(
     model.avatar = Set(input.avatar.clone().filter(|s| !s.is_empty()));
     model.description = Set(input.description.clone().filter(|s| !s.is_empty()));
     model.sort_order = Set(input.sort_order.unwrap_or(0));
-    model.update(&state.db).await?;
+    model.update(&state.db()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -90,7 +93,7 @@ async fn delete_friend(
     State(state): State<AppState>,
     Path(id): Path<i32>,
 ) -> ApiResult<impl IntoResponse> {
-    friends::Entity::delete_by_id(id).exec(&state.db).await?;
+    friends::Entity::delete_by_id(id).exec(&state.db()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -98,7 +101,7 @@ async fn delete_friend(
 
 async fn get_settings(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let map: HashMap<String, String> = settings::Entity::find()
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .into_iter()
         .map(|s| (s.key, s.value))
@@ -114,19 +117,19 @@ async fn put_settings(
         if key.len() > 128 {
             continue;
         }
-        let existing = settings::Entity::find_by_id(key.clone()).one(&state.db).await?;
+        let existing = settings::Entity::find_by_id(key.clone()).one(&state.db()).await?;
         match existing {
             Some(row) => {
                 let mut model: settings::ActiveModel = row.into();
                 model.value = Set(value);
-                model.update(&state.db).await?;
+                model.update(&state.db()).await?;
             }
             None => {
                 let model = settings::ActiveModel {
                     key: Set(key),
                     value: Set(value),
                 };
-                model.insert(&state.db).await?;
+                model.insert(&state.db()).await?;
             }
         }
     }
@@ -194,7 +197,7 @@ async fn upload_file(
             created_at: Set(now.into()),
             ..Default::default()
         };
-        let created = model.insert(&state.db).await?;
+        let created = model.insert(&state.db()).await?;
 
         return Ok((
             StatusCode::CREATED,
@@ -221,12 +224,12 @@ async fn list_uploads(
     let page = q.page.unwrap_or(1).max(1);
     let page_size = q.page_size.unwrap_or(24).clamp(1, 100);
     let base = uploads::Entity::find();
-    let total = base.clone().count(&state.db).await?;
+    let total = base.clone().count(&state.db()).await?;
     let items: Vec<serde_json::Value> = base
         .order_by_desc(uploads::Column::Id)
         .offset((page - 1) * page_size)
         .limit(page_size)
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .iter()
         .map(|u| {
@@ -243,24 +246,253 @@ async fn delete_upload(
     Path(id): Path<i32>,
 ) -> ApiResult<impl IntoResponse> {
     let row = uploads::Entity::find_by_id(id)
-        .one(&state.db)
+        .one(&state.db())
         .await?
         .ok_or_else(ApiError::not_found)?;
     let abs = state.cfg.upload_dir.join(&row.path);
     let _ = tokio::fs::remove_file(abs).await;
-    uploads::Entity::delete_by_id(id).exec(&state.db).await?;
+    uploads::Entity::delete_by_id(id).exec(&state.db()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------- 站点图标 ----------
+
+const SITE_ICON_URL_KEY: &str = "site_icon_url";
+
+async fn upsert_setting(
+    db: &sea_orm::DatabaseConnection,
+    key: &str,
+    value: String,
+) -> ApiResult<()> {
+    let existing = settings::Entity::find_by_id(key.to_string())
+        .one(db)
+        .await?;
+    match existing {
+        Some(row) => {
+            let mut model: settings::ActiveModel = row.into();
+            model.value = Set(value);
+            model.update(db).await?;
+        }
+        None => {
+            settings::ActiveModel {
+                key: Set(key.to_string()),
+                value: Set(value),
+            }
+            .insert(db)
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn clear_setting(db: &sea_orm::DatabaseConnection, key: &str) -> ApiResult<()> {
+    settings::Entity::delete_by_id(key.to_string())
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
+async fn deactivate_all_site_icons(db: &sea_orm::DatabaseConnection) -> ApiResult<()> {
+    let active = site_icons::Entity::find()
+        .filter(site_icons::Column::IsActive.eq(true))
+        .all(db)
+        .await?;
+    for row in active {
+        let mut model: site_icons::ActiveModel = row.into();
+        model.is_active = Set(false);
+        model.update(db).await?;
+    }
+    Ok(())
+}
+
+async fn set_active_site_icon(
+    db: &sea_orm::DatabaseConnection,
+    icon: &site_icons::Model,
+) -> ApiResult<String> {
+    let upload = uploads::Entity::find_by_id(icon.upload_id)
+        .one(db)
+        .await?
+        .ok_or_else(ApiError::not_found)?;
+    let url = format!("/uploads/{}", upload.path);
+    deactivate_all_site_icons(db).await?;
+    let mut model: site_icons::ActiveModel = icon.clone().into();
+    model.is_active = Set(true);
+    model.update(db).await?;
+    upsert_setting(db, SITE_ICON_URL_KEY, url.clone()).await?;
+    Ok(url)
+}
+
+async fn list_site_icons(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let rows = site_icons::Entity::find()
+        .order_by_desc(site_icons::Column::Id)
+        .all(&state.db())
+        .await?;
+
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        let upload = uploads::Entity::find_by_id(row.upload_id)
+            .one(&state.db())
+            .await?;
+        let Some(upload) = upload else {
+            continue;
+        };
+        items.push(json!({
+            "id": row.id,
+            "upload_id": row.upload_id,
+            "url": format!("/uploads/{}", upload.path),
+            "mime": upload.mime,
+            "original_name": upload.original_name,
+            "is_active": row.is_active,
+            "created_at": row.created_at,
+        }));
+    }
+    Ok(Json(json!({ "items": items })))
+}
+
+async fn upload_site_icon(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> ApiResult<impl IntoResponse> {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::bad_request(format!("multipart error: {e}")))?
+    {
+        if field.name() != Some("file") {
+            continue;
+        }
+        let original_name = field.file_name().unwrap_or("file").to_string();
+        let ext = original_name
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
+        if !ALLOWED_EXT.contains(&ext.as_str()) {
+            return Err(ApiError::bad_request(format!(
+                "file type .{ext} not allowed (allowed: {})",
+                ALLOWED_EXT.join(", ")
+            )));
+        }
+        let mime = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        let data = field
+            .bytes()
+            .await
+            .map_err(|e| ApiError::bad_request(format!("read file error: {e}")))?;
+        if data.is_empty() {
+            return Err(ApiError::bad_request("empty file"));
+        }
+
+        let now = Utc::now();
+        let rel_dir = now.format("%Y/%m").to_string();
+        let filename = format!("{}.{}", Uuid::new_v4().simple(), ext);
+        let rel_path = format!("{rel_dir}/{filename}");
+
+        let abs_dir = state.cfg.upload_dir.join(&rel_dir);
+        tokio::fs::create_dir_all(&abs_dir)
+            .await
+            .map_err(|e| ApiError::internal(format!("mkdir failed: {e}")))?;
+        tokio::fs::write(abs_dir.join(&filename), &data)
+            .await
+            .map_err(|e| ApiError::internal(format!("write failed: {e}")))?;
+
+        let upload = uploads::ActiveModel {
+            path: Set(rel_path.clone()),
+            original_name: Set(original_name.clone()),
+            mime: Set(mime.clone()),
+            size_bytes: Set(data.len() as i64),
+            created_at: Set(now.into()),
+            ..Default::default()
+        }
+        .insert(&state.db())
+        .await?;
+
+        deactivate_all_site_icons(&state.db()).await?;
+
+        let icon = site_icons::ActiveModel {
+            upload_id: Set(upload.id),
+            is_active: Set(true),
+            created_at: Set(now.into()),
+            ..Default::default()
+        }
+        .insert(&state.db())
+        .await?;
+
+        let url = format!("/uploads/{rel_path}");
+        upsert_setting(&state.db(), SITE_ICON_URL_KEY, url.clone()).await?;
+
+        return Ok((
+            StatusCode::CREATED,
+            Json(json!({
+                "id": icon.id,
+                "upload_id": upload.id,
+                "url": url,
+                "mime": mime,
+                "original_name": original_name,
+                "is_active": true,
+                "created_at": icon.created_at,
+            })),
+        ));
+    }
+    Err(ApiError::bad_request("missing 'file' field"))
+}
+
+async fn activate_site_icon(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+) -> ApiResult<impl IntoResponse> {
+    let icon = site_icons::Entity::find_by_id(id)
+        .one(&state.db())
+        .await?
+        .ok_or_else(ApiError::not_found)?;
+    let url = set_active_site_icon(&state.db(), &icon).await?;
+    Ok(Json(json!({ "id": icon.id, "url": url, "is_active": true })))
+}
+
+async fn delete_site_icon(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+) -> ApiResult<impl IntoResponse> {
+    let icon = site_icons::Entity::find_by_id(id)
+        .one(&state.db())
+        .await?
+        .ok_or_else(ApiError::not_found)?;
+    let was_active = icon.is_active;
+    let upload_id = icon.upload_id;
+
+    site_icons::Entity::delete_by_id(id)
+        .exec(&state.db())
+        .await?;
+
+    if let Some(upload) = uploads::Entity::find_by_id(upload_id)
+        .one(&state.db())
+        .await?
+    {
+        let abs = state.cfg.upload_dir.join(&upload.path);
+        let _ = tokio::fs::remove_file(abs).await;
+        uploads::Entity::delete_by_id(upload_id)
+            .exec(&state.db())
+            .await?;
+    }
+
+    if was_active {
+        clear_setting(&state.db(), SITE_ICON_URL_KEY).await?;
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
 // ---------- 统计面板 ----------
 
 async fn stats_dashboard(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let total_posts = posts::Entity::find().count(&state.db).await?;
+    let total_posts = posts::Entity::find().count(&state.db()).await?;
     let total_published = posts::Entity::find()
         .filter(posts::Column::Status.eq(posts::STATUS_PUBLISHED))
-        .count(&state.db)
+        .count(&state.db())
         .await?;
-    let total_pv = page_views::Entity::find().count(&state.db).await?;
+    let total_pv = page_views::Entity::find().count(&state.db()).await?;
 
     let offset = FixedOffset::east_opt(state.cfg.stats_tz_offset_hours * 3600)
         .unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
@@ -269,7 +501,7 @@ async fn stats_dashboard(State(state): State<AppState>) -> ApiResult<impl IntoRe
 
     let rows = page_views::Entity::find()
         .filter(page_views::Column::Date.gte(cutoff.clone()))
-        .all(&state.db)
+        .all(&state.db())
         .await?;
 
     // 按天聚合 PV / UV

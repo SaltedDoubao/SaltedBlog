@@ -53,13 +53,12 @@ async fn main() -> anyhow::Result<()> {
     bootstrap_admin(&db, &cfg).await?;
     seed_settings(&db).await?;
 
-    let state = Arc::new(AppStateInner {
+    let state = Arc::new(AppStateInner::new(
         db,
-        jieba: jieba_rs::Jieba::new(),
-        limiter: LoginLimiter::new(),
-        track_salt: uuid::Uuid::new_v4().to_string(),
         cfg,
-    });
+        jieba_rs::Jieba::new(),
+        LoginLimiter::new(),
+    ));
 
     let app = routes::build_router(state.clone());
     let listener = tokio::net::TcpListener::bind(&state.cfg.bind_addr).await?;

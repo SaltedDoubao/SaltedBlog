@@ -7,10 +7,12 @@ interface Props {
   /** 语言切换的目标地址（如文章页的翻译版本）；缺省按规则映射 */
   altPath?: string;
   siteTitle: string;
+  /** 自定义站点图标；为空时使用默认 CSS 几何图标 */
+  siteIconUrl?: string | null;
   variant?: 'default' | 'home';
 }
 
-const { lang, pathname, altPath, siteTitle, variant = 'default' } = Astro.props;
+const { lang, pathname, altPath, siteTitle, siteIconUrl = null, variant = 'default' } = Astro.props;
 
 const navItems = [
   { index: '00', href: localePath(lang, '/'), label: t(lang, 'nav.home'), exact: true },
@@ -36,7 +38,13 @@ const langLabel = lang === 'zh' ? 'EN' : '中';
   data-variant={variant}
 >
   <a class="brand" href={localePath(lang, '/')} aria-label={siteTitle}>
-    <span class="brand__icon" aria-hidden="true"></span>
+    {
+      siteIconUrl ? (
+        <img class="brand__icon brand__icon--img" src={siteIconUrl} alt="" aria-hidden="true" />
+      ) : (
+        <span class="brand__icon" aria-hidden="true" />
+      )
+    }
     <span class="brand__name">
       {siteTitle}
       <small class="mono">PERSONAL TERMINAL</small>
@@ -144,6 +152,7 @@ const langLabel = lang === 'zh' ? 'EN' : '中';
     padding: 0 var(--space-6);
     border-right: 1px solid var(--border-subtle);
     text-decoration: none;
+    user-select: none;
   }
 
   .brand__icon {
@@ -152,6 +161,12 @@ const langLabel = lang === 'zh' ? 'EN' : '中';
     flex: none;
     background: var(--primary);
     clip-path: polygon(50% 0, 100% 24%, 75% 50%, 100% 76%, 50% 100%, 0 76%, 25% 50%, 0 24%);
+  }
+
+  .brand__icon--img {
+    display: block;
+    object-fit: cover;
+    background: transparent;
   }
 
   .brand__name {
@@ -185,6 +200,7 @@ const langLabel = lang === 'zh' ? 'EN' : '中';
     font-weight: 500;
     text-decoration: none;
     color: var(--text);
+    user-select: none;
   }
 
   .site-header--home:not(.is-scrolled) .nav a,

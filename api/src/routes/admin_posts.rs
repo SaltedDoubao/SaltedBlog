@@ -60,14 +60,14 @@ async fn list_posts(
     }
 
     let base = posts::Entity::find().filter(cond);
-    let total = base.clone().count(&state.db).await?;
+    let total = base.clone().count(&state.db()).await?;
     let items = base
         .order_by_desc(posts::Column::UpdatedAt)
         .offset((page - 1) * page_size)
         .limit(page_size)
-        .all(&state.db)
+        .all(&state.db())
         .await?;
-    let items = hydrate_posts(&state.db, items).await?;
+    let items = hydrate_posts(&state.db(), items).await?;
 
     Ok(Json(json!({
         "items": items, "total": total, "page": page, "page_size": page_size
@@ -81,13 +81,13 @@ async fn get_post(
     Path(id): Path<i32>,
 ) -> ApiResult<impl IntoResponse> {
     let post = posts::Entity::find_by_id(id)
-        .one(&state.db)
+        .one(&state.db())
         .await?
         .ok_or_else(ApiError::not_found)?;
 
     let tag_ids: Vec<i32> = post_tags::Entity::find()
         .filter(post_tags::Column::PostId.eq(post.id))
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .into_iter()
         .map(|r| r.tag_id)
@@ -100,7 +100,7 @@ async fn get_post(
                 .add(posts::Column::GroupId.eq(post.group_id.clone()))
                 .add(posts::Column::Id.ne(post.id)),
         )
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .iter()
         .map(|p| json!({ "id": p.id, "lang": p.lang, "title": p.title, "status": p.status }))
@@ -173,7 +173,7 @@ async fn prepare(state: &AppState, input: &PostInput) -> ApiResult<PreparedPost>
     } else {
         tags::Entity::find()
             .filter(tags::Column::Id.is_in(input.tag_ids.clone()))
-            .all(&state.db)
+            .all(&state.db())
             .await?
             .into_iter()
             .flat_map(|t| [t.name_zh, t.name_en])
@@ -204,13 +204,13 @@ async fn slug_conflict(
     if let Some(id) = exclude_id {
         cond = cond.add(posts::Column::Id.ne(id));
     }
-    Ok(posts::Entity::find().filter(cond).count(&state.db).await? > 0)
+    Ok(posts::Entity::find().filter(cond).count(&state.db()).await? > 0)
 }
 
 async fn replace_tags(state: &AppState, post_id: i32, tag_ids: &[i32]) -> ApiResult<()> {
     post_tags::Entity::delete_many()
         .filter(post_tags::Column::PostId.eq(post_id))
-        .exec(&state.db)
+        .exec(&state.db())
         .await?;
     for tag_id in tag_ids {
         let rel = post_tags::ActiveModel {
@@ -218,7 +218,7 @@ async fn replace_tags(state: &AppState, post_id: i32, tag_ids: &[i32]) -> ApiRes
             tag_id: Set(*tag_id),
         };
         // 忽略重复插入
-        let _ = post_tags::Entity::insert(rel).exec(&state.db).await;
+        let _ = post_tags::Entity::insert(rel).exec(&state.db()).await;
     }
     Ok(())
 }
@@ -269,7 +269,7 @@ async fn create_post(
         published_at: Set(published_at),
         ..Default::default()
     };
-    let post = model.insert(&state.db).await?;
+    let post = model.insert(&state.db()).await?;
     replace_tags(&state, post.id, &input.tag_ids).await?;
 
     Ok((StatusCode::CREATED, Json(json!({ "id": post.id, "slug": post.slug }))))
@@ -281,7 +281,7 @@ async fn update_post(
     Json(input): Json<PostInput>,
 ) -> ApiResult<impl IntoResponse> {
     let existing = posts::Entity::find_by_id(id)
-        .one(&state.db)
+        .one(&state.db())
         .await?
         .ok_or_else(ApiError::not_found)?;
 
@@ -323,7 +323,7 @@ async fn update_post(
     model.series_order = Set(input.series_order);
     model.updated_at = Set(now.into());
     model.published_at = Set(published_at);
-    let post = model.update(&state.db).await?;
+    let post = model.update(&state.db()).await?;
 
     replace_tags(&state, post.id, &input.tag_ids).await?;
 
@@ -336,9 +336,9 @@ async fn delete_post(
 ) -> ApiResult<impl IntoResponse> {
     post_tags::Entity::delete_many()
         .filter(post_tags::Column::PostId.eq(id))
-        .exec(&state.db)
+        .exec(&state.db())
         .await?;
-    let res = posts::Entity::delete_by_id(id).exec(&state.db).await?;
+    let res = posts::Entity::delete_by_id(id).exec(&state.db()).await?;
     if res.rows_affected == 0 {
         return Err(ApiError::not_found());
     }

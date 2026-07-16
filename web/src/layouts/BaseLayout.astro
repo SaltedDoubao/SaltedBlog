@@ -41,6 +41,33 @@ const settings = await getSettingsCached();
 const siteTitle = settings[`site_title_${lang}`] || 'SaltedBlog';
 const siteDescription = description || settings[`description_${lang}`] || '';
 const pageTitle = title ? `${title} · ${siteTitle}` : siteTitle;
+const siteIconUrl = settings.site_icon_url?.trim() || '';
+
+function iconMime(url: string): string {
+  const ext = url.split('?')[0]?.split('.').pop()?.toLowerCase() ?? '';
+  switch (ext) {
+    case 'svg':
+      return 'image/svg+xml';
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'avif':
+      return 'image/avif';
+    case 'ico':
+      return 'image/x-icon';
+    default:
+      return 'image/png';
+  }
+}
+
+const faviconHref = siteIconUrl || '/favicon.svg';
+const faviconType = siteIconUrl ? iconMime(siteIconUrl) : 'image/svg+xml';
 
 const siteUrl = (
   (typeof process !== 'undefined' && process.env?.PUBLIC_SITE_URL) ||
@@ -62,7 +89,7 @@ const ogImageAbs = ogImage && siteUrl && ogImage.startsWith('/') ? `${siteUrl}${
     <meta name="theme-color" content="#0b0d0f" />
     <title>{pageTitle}</title>
     {siteDescription && <meta name="description" content={siteDescription} />}
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type={faviconType} href={faviconHref} />
     <link
       rel="alternate"
       type="application/rss+xml"
@@ -117,6 +144,7 @@ const ogImageAbs = ogImage && siteUrl && ogImage.startsWith('/') ? `${siteUrl}${
       pathname={pathname}
       altPath={resolvedAltPath}
       siteTitle={siteTitle}
+      siteIconUrl={siteIconUrl || null}
       variant={variant}
     />
     <main>

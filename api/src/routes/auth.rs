@@ -45,7 +45,7 @@ async fn login(
 
     let user = users::Entity::find()
         .filter(users::Column::Username.eq(input.username.trim()))
-        .one(&state.db)
+        .one(&state.db())
         .await?;
 
     let Some(user) = user else {
@@ -73,7 +73,7 @@ async fn logout(
     headers: HeaderMap,
 ) -> ApiResult<impl IntoResponse> {
     if let Some(token) = read_session_cookie(&headers) {
-        let _ = sessions::Entity::delete_by_id(token).exec(&state.db).await;
+        let _ = sessions::Entity::delete_by_id(token).exec(&state.db()).await;
     }
     let cookie = session_cookie(&state, "", 0);
     let mut response = StatusCode::NO_CONTENT.into_response();
@@ -88,7 +88,7 @@ async fn me(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<impl
         return Err(ApiError::unauthorized());
     };
     let user = users::Entity::find_by_id(user_id)
-        .one(&state.db)
+        .one(&state.db())
         .await?
         .ok_or_else(ApiError::unauthorized)?;
     Ok(Json(json!({ "username": user.username })))

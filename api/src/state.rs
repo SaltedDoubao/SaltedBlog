@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use jieba_rs::Jieba;
 use sea_orm::DatabaseConnection;
+use uuid::Uuid;
 
 use crate::config::Config;
 
@@ -40,17 +41,38 @@ impl LoginLimiter {
     }
 
     pub fn clear(&self, ip: IpAddr) {
-        self.attempts.lock().unwrap().remove(&ip);
+        let mut map = self.attempts.lock().unwrap();
+        map.remove(&ip);
     }
 }
 
 pub struct AppStateInner {
-    pub db: DatabaseConnection,
+    db_slot: std::sync::RwLock<DatabaseConnection>,
     pub cfg: Config,
     pub jieba: Jieba,
     pub limiter: LoginLimiter,
     /// 统计去重使用的服务端盐（进程启动时随机生成即可满足按日去重）
     pub track_salt: String,
+}
+
+impl AppStateInner {
+    pub fn new(db: DatabaseConnection, cfg: Config, jieba: Jieba, limiter: LoginLimiter) -> Self {
+        Self {
+            db_slot: std::sync::RwLock::new(db),
+            cfg,
+            jieba,
+            limiter,
+            track_salt: Uuid::new_v4().to_string(),
+        }
+    }
+
+    /// 获取当前数据库连接（Clone 池句柄，开销很低）
+    pub fn db(&self) -> DatabaseConnection {
+        self.db_slot
+            .read()
+            .expect("db lock poisoned")
+            .clone()
+    }
 }
 
 pub type AppState = std::sync::Arc<AppStateInner>;

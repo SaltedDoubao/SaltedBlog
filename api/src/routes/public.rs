@@ -74,7 +74,7 @@ async fn list_posts(
     if let Some(cat_slug) = q.category.as_deref().filter(|s| !s.is_empty()) {
         let cat = categories::Entity::find()
             .filter(categories::Column::Slug.eq(cat_slug))
-            .one(&state.db)
+            .one(&state.db())
             .await?
             .ok_or_else(ApiError::not_found)?;
         cond = cond.add(posts::Column::CategoryId.eq(cat.id));
@@ -83,7 +83,7 @@ async fn list_posts(
     if let Some(series_slug) = q.series.as_deref().filter(|s| !s.is_empty()) {
         let sr = series::Entity::find()
             .filter(series::Column::Slug.eq(series_slug))
-            .one(&state.db)
+            .one(&state.db())
             .await?
             .ok_or_else(ApiError::not_found)?;
         cond = cond.add(posts::Column::SeriesId.eq(sr.id));
@@ -92,12 +92,12 @@ async fn list_posts(
     if let Some(tag_slug) = q.tag.as_deref().filter(|s| !s.is_empty()) {
         let tag = tags::Entity::find()
             .filter(tags::Column::Slug.eq(tag_slug))
-            .one(&state.db)
+            .one(&state.db())
             .await?
             .ok_or_else(ApiError::not_found)?;
         let ids: Vec<i32> = post_tags::Entity::find()
             .filter(post_tags::Column::TagId.eq(tag.id))
-            .all(&state.db)
+            .all(&state.db())
             .await?
             .into_iter()
             .map(|r| r.post_id)
@@ -111,14 +111,14 @@ async fn list_posts(
     }
 
     let base = posts::Entity::find().filter(cond);
-    let total = base.clone().count(&state.db).await?;
+    let total = base.clone().count(&state.db()).await?;
     let items = base
         .order_by_desc(posts::Column::PublishedAt)
         .offset((page - 1) * page_size)
         .limit(page_size)
-        .all(&state.db)
+        .all(&state.db())
         .await?;
-    let items = hydrate_posts(&state.db, items).await?;
+    let items = hydrate_posts(&state.db(), items).await?;
 
     Ok(Json(json!({
         "items": items, "total": total, "page": page, "page_size": page_size
@@ -136,7 +136,7 @@ async fn post_detail(
     }
     let post = posts::Entity::find()
         .filter(published_filter(&lang).add(posts::Column::Slug.eq(slug)))
-        .one(&state.db)
+        .one(&state.db())
         .await?
         .ok_or_else(ApiError::not_found)?;
 
@@ -154,7 +154,7 @@ async fn post_detail(
                 .add(posts::Column::Id.ne(post.id))
                 .add(posts::Column::Status.eq(posts::STATUS_PUBLISHED)),
         )
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .iter()
         .map(|p| json!({ "lang": p.lang, "slug": p.slug, "title": p.title }))
@@ -166,7 +166,7 @@ async fn post_detail(
             .filter(published_filter(&post.lang).add(posts::Column::SeriesId.eq(series_id)))
             .order_by_asc(posts::Column::SeriesOrder)
             .order_by_asc(posts::Column::PublishedAt)
-            .all(&state.db)
+            .all(&state.db())
             .await?
             .iter()
             .map(|p| {
@@ -189,7 +189,7 @@ async fn post_detail(
                     .add(posts::Column::Id.ne(post.id)),
             )
             .order_by_desc(posts::Column::PublishedAt)
-            .one(&state.db)
+            .one(&state.db())
             .await?;
         let next = posts::Entity::find()
             .filter(
@@ -198,7 +198,7 @@ async fn post_detail(
                     .add(posts::Column::Id.ne(post.id)),
             )
             .order_by_asc(posts::Column::PublishedAt)
-            .one(&state.db)
+            .one(&state.db())
             .await?;
         (prev, next)
     } else {
@@ -210,7 +210,7 @@ async fn post_detail(
     };
 
     let content_html = post.content_html.clone();
-    let hydrated = hydrate_posts(&state.db, vec![post]).await?;
+    let hydrated = hydrate_posts(&state.db(), vec![post]).await?;
     let item = hydrated.into_iter().next().ok_or_else(ApiError::not_found)?;
 
     Ok(Json(json!({
@@ -239,7 +239,7 @@ async fn archive(
     let items: Vec<serde_json::Value> = posts::Entity::find()
         .filter(published_filter(&lang))
         .order_by_desc(posts::Column::PublishedAt)
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .iter()
         .map(|p| {
@@ -261,7 +261,7 @@ async fn taxonomy(
     let lang = lang_of(q.lang.as_deref())?;
     let published = posts::Entity::find()
         .filter(published_filter(&lang))
-        .all(&state.db)
+        .all(&state.db())
         .await?;
     let post_ids: Vec<i32> = published.iter().map(|p| p.id).collect();
 
@@ -280,7 +280,7 @@ async fn taxonomy(
     if !post_ids.is_empty() {
         for rel in post_tags::Entity::find()
             .filter(post_tags::Column::PostId.is_in(post_ids))
-            .all(&state.db)
+            .all(&state.db())
             .await?
         {
             *tag_count.entry(rel.tag_id).or_default() += 1;
@@ -289,7 +289,7 @@ async fn taxonomy(
 
     let categories_out: Vec<serde_json::Value> = categories::Entity::find()
         .order_by_asc(categories::Column::SortOrder)
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .iter()
         .map(|c| {
@@ -300,7 +300,7 @@ async fn taxonomy(
         .collect();
 
     let tags_out: Vec<serde_json::Value> = tags::Entity::find()
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .iter()
         .map(|t| {
@@ -311,7 +311,7 @@ async fn taxonomy(
         .collect();
 
     let series_out: Vec<serde_json::Value> = series::Entity::find()
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .iter()
         .map(|s| {
@@ -363,9 +363,9 @@ async fn search(
         .filter(cond)
         .order_by_desc(posts::Column::PublishedAt)
         .limit(30)
-        .all(&state.db)
+        .all(&state.db())
         .await?;
-    let items = hydrate_posts(&state.db, items).await?;
+    let items = hydrate_posts(&state.db(), items).await?;
 
     Ok(Json(json!({ "items": items, "q": raw })))
 }
@@ -376,14 +376,14 @@ async fn list_friends(State(state): State<AppState>) -> ApiResult<impl IntoRespo
     let items = friends::Entity::find()
         .order_by_asc(friends::Column::SortOrder)
         .order_by_asc(friends::Column::Id)
-        .all(&state.db)
+        .all(&state.db())
         .await?;
     Ok(Json(json!({ "items": items })))
 }
 
 async fn public_settings(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let map: HashMap<String, String> = settings::Entity::find()
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .into_iter()
         .map(|s| (s.key, s.value))
@@ -398,7 +398,7 @@ async fn about_page(
     let lang = lang_of(q.lang.as_deref())?;
     let key = format!("about_{lang}");
     let md = settings::Entity::find_by_id(key)
-        .one(&state.db)
+        .one(&state.db())
         .await?
         .map(|s| s.value)
         .unwrap_or_default();
@@ -411,7 +411,7 @@ async fn about_page(
 async fn sitemap_data(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let all_posts: Vec<serde_json::Value> = posts::Entity::find()
         .filter(posts::Column::Status.eq(posts::STATUS_PUBLISHED))
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .iter()
         .map(|p| {
@@ -422,19 +422,19 @@ async fn sitemap_data(State(state): State<AppState>) -> ApiResult<impl IntoRespo
         })
         .collect();
     let cats: Vec<String> = categories::Entity::find()
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .into_iter()
         .map(|c| c.slug)
         .collect();
     let tag_slugs: Vec<String> = tags::Entity::find()
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .into_iter()
         .map(|t| t.slug)
         .collect();
     let series_slugs: Vec<String> = series::Entity::find()
-        .all(&state.db)
+        .all(&state.db())
         .await?
         .into_iter()
         .map(|s| s.slug)
@@ -495,7 +495,7 @@ async fn track(
                 .add(page_views::Column::Path.eq(path))
                 .add(page_views::Column::Date.eq(date.clone())),
         )
-        .count(&state.db)
+        .count(&state.db())
         .await?;
     if exists > 0 {
         return Ok(StatusCode::NO_CONTENT);
@@ -514,7 +514,7 @@ async fn track(
         created_at: Set(Utc::now().into()),
         ..Default::default()
     };
-    page_views::Entity::insert(row).exec(&state.db).await?;
+    page_views::Entity::insert(row).exec(&state.db()).await?;
 
     if let Some(post_id) = input.post_id {
         let _ = posts::Entity::update_many()
@@ -523,7 +523,7 @@ async fn track(
                 Expr::col(posts::Column::ViewCount).add(1),
             )
             .filter(posts::Column::Id.eq(post_id))
-            .exec(&state.db)
+            .exec(&state.db())
             .await;
     }
 

@@ -6,6 +6,7 @@ pub mod posts;
 pub mod series;
 pub mod settings;
 pub mod sessions;
+pub mod site_icons;
 pub mod tags;
 pub mod uploads;
 pub mod users;

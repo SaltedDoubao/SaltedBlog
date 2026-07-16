@@ -68,13 +68,13 @@ async fn list_categories(State(state): State<AppState>) -> ApiResult<impl IntoRe
     let items = categories::Entity::find()
         .order_by_asc(categories::Column::SortOrder)
         .order_by_asc(categories::Column::Id)
-        .all(&state.db)
+        .all(&state.db())
         .await?;
     let mut out = Vec::new();
     for c in items {
         let count = posts::Entity::find()
             .filter(posts::Column::CategoryId.eq(c.id))
-            .count(&state.db)
+            .count(&state.db())
             .await?;
         let mut v = serde_json::to_value(&c).unwrap();
         v["post_count"] = json!(count);
@@ -98,7 +98,7 @@ async fn create_category(
         ..Default::default()
     };
     let created = model
-        .insert(&state.db)
+        .insert(&state.db())
         .await
         .map_err(|e| ApiError::new(StatusCode::CONFLICT, format!("create failed: {e}")))?;
     Ok((StatusCode::CREATED, Json(json!({ "id": created.id }))))
@@ -111,7 +111,7 @@ async fn update_category(
 ) -> ApiResult<impl IntoResponse> {
     require_names(&input)?;
     let existing = categories::Entity::find_by_id(id)
-        .one(&state.db)
+        .one(&state.db())
         .await?
         .ok_or_else(ApiError::not_found)?;
     let slug = resolve_slug(&input)?;
@@ -120,7 +120,7 @@ async fn update_category(
     model.name_zh = Set(input.name_zh.trim().to_string());
     model.name_en = Set(input.name_en.trim().to_string());
     model.sort_order = Set(input.sort_order.unwrap_or(0));
-    model.update(&state.db).await?;
+    model.update(&state.db()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -132,9 +132,9 @@ async fn delete_category(
     posts::Entity::update_many()
         .col_expr(posts::Column::CategoryId, sea_orm::sea_query::Expr::value(sea_orm::Value::Int(None)))
         .filter(posts::Column::CategoryId.eq(id))
-        .exec(&state.db)
+        .exec(&state.db())
         .await?;
-    categories::Entity::delete_by_id(id).exec(&state.db).await?;
+    categories::Entity::delete_by_id(id).exec(&state.db()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -143,13 +143,13 @@ async fn delete_category(
 async fn list_tags(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let items = tags::Entity::find()
         .order_by_asc(tags::Column::Id)
-        .all(&state.db)
+        .all(&state.db())
         .await?;
     let mut out = Vec::new();
     for t in items {
         let count = crate::entities::post_tags::Entity::find()
             .filter(crate::entities::post_tags::Column::TagId.eq(t.id))
-            .count(&state.db)
+            .count(&state.db())
             .await?;
         let mut v = serde_json::to_value(&t).unwrap();
         v["post_count"] = json!(count);
@@ -172,7 +172,7 @@ async fn create_tag(
         ..Default::default()
     };
     let created = model
-        .insert(&state.db)
+        .insert(&state.db())
         .await
         .map_err(|e| ApiError::new(StatusCode::CONFLICT, format!("create failed: {e}")))?;
     Ok((StatusCode::CREATED, Json(json!({ "id": created.id }))))
@@ -185,7 +185,7 @@ async fn update_tag(
 ) -> ApiResult<impl IntoResponse> {
     require_names(&input)?;
     let existing = tags::Entity::find_by_id(id)
-        .one(&state.db)
+        .one(&state.db())
         .await?
         .ok_or_else(ApiError::not_found)?;
     let slug = resolve_slug(&input)?;
@@ -193,7 +193,7 @@ async fn update_tag(
     model.slug = Set(slug);
     model.name_zh = Set(input.name_zh.trim().to_string());
     model.name_en = Set(input.name_en.trim().to_string());
-    model.update(&state.db).await?;
+    model.update(&state.db()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -203,9 +203,9 @@ async fn delete_tag(
 ) -> ApiResult<impl IntoResponse> {
     crate::entities::post_tags::Entity::delete_many()
         .filter(crate::entities::post_tags::Column::TagId.eq(id))
-        .exec(&state.db)
+        .exec(&state.db())
         .await?;
-    tags::Entity::delete_by_id(id).exec(&state.db).await?;
+    tags::Entity::delete_by_id(id).exec(&state.db()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -214,13 +214,13 @@ async fn delete_tag(
 async fn list_series(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let items = series::Entity::find()
         .order_by_asc(series::Column::Id)
-        .all(&state.db)
+        .all(&state.db())
         .await?;
     let mut out = Vec::new();
     for s in items {
         let count = posts::Entity::find()
             .filter(posts::Column::SeriesId.eq(s.id))
-            .count(&state.db)
+            .count(&state.db())
             .await?;
         let mut v = serde_json::to_value(&s).unwrap();
         v["post_count"] = json!(count);
@@ -245,7 +245,7 @@ async fn create_series(
         ..Default::default()
     };
     let created = model
-        .insert(&state.db)
+        .insert(&state.db())
         .await
         .map_err(|e| ApiError::new(StatusCode::CONFLICT, format!("create failed: {e}")))?;
     Ok((StatusCode::CREATED, Json(json!({ "id": created.id }))))
@@ -258,7 +258,7 @@ async fn update_series(
 ) -> ApiResult<impl IntoResponse> {
     require_names(&input)?;
     let existing = series::Entity::find_by_id(id)
-        .one(&state.db)
+        .one(&state.db())
         .await?
         .ok_or_else(ApiError::not_found)?;
     let slug = resolve_slug(&input)?;
@@ -268,7 +268,7 @@ async fn update_series(
     model.name_en = Set(input.name_en.trim().to_string());
     model.description_zh = Set(input.description_zh.clone().filter(|s| !s.is_empty()));
     model.description_en = Set(input.description_en.clone().filter(|s| !s.is_empty()));
-    model.update(&state.db).await?;
+    model.update(&state.db()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -280,8 +280,8 @@ async fn delete_series(
         .col_expr(posts::Column::SeriesId, sea_orm::sea_query::Expr::value(sea_orm::Value::Int(None)))
         .col_expr(posts::Column::SeriesOrder, sea_orm::sea_query::Expr::value(sea_orm::Value::Int(None)))
         .filter(posts::Column::SeriesId.eq(id))
-        .exec(&state.db)
+        .exec(&state.db())
         .await?;
-    series::Entity::delete_by_id(id).exec(&state.db).await?;
+    series::Entity::delete_by_id(id).exec(&state.db()).await?;
     Ok(StatusCode::NO_CONTENT)
 }

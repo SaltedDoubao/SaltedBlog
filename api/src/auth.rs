@@ -51,12 +51,12 @@ pub async fn create_session(state: &AppState, user_id: i32) -> ApiResult<String>
         expires_at: Set((now + Duration::days(state.cfg.session_ttl_days)).into()),
         created_at: Set(now.into()),
     };
-    model.insert(&state.db).await?;
+    model.insert(&state.db()).await?;
 
     // 顺手清理过期会话
     let _ = sessions::Entity::delete_many()
         .filter(sessions::Column::ExpiresAt.lt(now))
-        .exec(&state.db)
+        .exec(&state.db())
         .await;
 
     Ok(token)
@@ -98,7 +98,7 @@ pub fn client_ip(headers: &HeaderMap, addr: Option<&SocketAddr>) -> IpAddr {
 pub async fn session_user_id(state: &AppState, headers: &HeaderMap) -> Option<i32> {
     let token = read_session_cookie(headers)?;
     let session = sessions::Entity::find_by_id(token)
-        .one(&state.db)
+        .one(&state.db())
         .await
         .ok()??;
     if session.expires_at < Utc::now() {

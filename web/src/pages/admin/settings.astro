@@ -71,6 +71,27 @@ const groups = [
     保存全部设置
   </button>
 
+  <div class="admin-panel">
+    <div class="admin-panel__head">
+      <span>ICON / 站点图标</span>
+      <button class="btn btn--sm" id="iconUploadBtn" type="button">上传图标</button>
+    </div>
+    <div class="admin-panel__body">
+      <div class="icon-current" id="iconCurrent">
+        <div class="icon-current__preview" id="iconPreview" aria-hidden="true"></div>
+        <div class="icon-current__meta">
+          <div class="label" style="margin:0">当前图标</div>
+          <p class="icon-current__hint" id="iconHint">使用默认 favicon 与页头几何图标</p>
+        </div>
+      </div>
+      <div class="label" style="margin-top:20px">历史图标</div>
+      <div class="icon-history" id="iconHistory">
+        <div style="color:var(--text-3);font-size:13px">加载中…</div>
+      </div>
+    </div>
+  </div>
+  <input type="file" id="iconFile" accept="image/*,.ico,.svg" hidden />
+
   {
     groups.map((group) => (
       <div class="admin-panel">
@@ -108,14 +129,137 @@ const groups = [
   }
 </AdminLayout>
 
+<style>
+  .icon-current {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .icon-current__preview {
+    width: 56px;
+    height: 56px;
+    flex: none;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+
+  .icon-current__preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .icon-current__preview.is-default {
+    background: var(--primary);
+    clip-path: polygon(50% 0, 100% 24%, 75% 50%, 100% 76%, 50% 100%, 0 76%, 25% 50%, 0 24%);
+    border: 0;
+  }
+
+  .icon-current__hint {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+
+  .icon-history {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+  }
+
+  .icon-item {
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    margin: 0;
+  }
+
+  .icon-item.is-active {
+    border-color: var(--primary);
+  }
+
+  .icon-item__img {
+    aspect-ratio: 1;
+    width: 100%;
+    object-fit: cover;
+    display: block;
+    background: var(--bg);
+  }
+
+  .icon-item__meta {
+    padding: 8px 10px;
+    font-size: 11px;
+    color: var(--text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .icon-item__badge {
+    color: var(--primary);
+    font-family: var(--font-data);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+  }
+
+  .icon-item__actions {
+    display: flex;
+    border-top: 1px solid var(--border);
+  }
+
+  .icon-item__actions button {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    padding: 7px 0;
+    font-family: var(--font-data);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    color: var(--text-2);
+  }
+
+  .icon-item__actions button:hover:not(:disabled) {
+    background: var(--primary);
+    color: var(--black);
+  }
+
+  .icon-item__actions button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .icon-item__actions button + button {
+    border-left: 1px solid var(--border);
+  }
+</style>
+
 <script>
-  import { adminFetch, toast } from '@/lib/admin-client';
+  import { adminFetch, confirmDanger, escapeHtml, toast } from '@/lib/admin-client';
+
+  interface SiteIconRow {
+    id: number;
+    url: string;
+    mime: string;
+    original_name: string;
+    is_active: boolean;
+    created_at: string;
+  }
 
   const inputs = Array.from(
     document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-setting]')
   );
+  const iconPreview = document.getElementById('iconPreview')!;
+  const iconHint = document.getElementById('iconHint')!;
+  const iconHistory = document.getElementById('iconHistory')!;
+  const iconFile = document.getElementById('iconFile') as HTMLInputElement;
 
-  async function load() {
+  async function loadSettings() {
     try {
       const settings = await adminFetch<Record<string, string>>('/api/admin/settings');
       for (const el of inputs) {
@@ -125,6 +269,98 @@ const groups = [
       toast(`加载失败：${(err as Error).message}`, 'error');
     }
   }
+
+  function renderCurrent(active: SiteIconRow | undefined) {
+    if (active) {
+      iconPreview.classList.remove('is-default');
+      iconPreview.innerHTML = `<img src="${escapeHtml(active.url)}" alt="" />`;
+      iconHint.textContent = `${active.original_name}（已应用到 favicon 与页头）`;
+    } else {
+      iconPreview.classList.add('is-default');
+      iconPreview.innerHTML = '';
+      iconHint.textContent = '使用默认 favicon 与页头几何图标';
+    }
+  }
+
+  async function loadIcons() {
+    let res: { items: SiteIconRow[] };
+    try {
+      res = await adminFetch('/api/admin/site-icons');
+    } catch (err) {
+      toast(`图标加载失败：${(err as Error).message}`, 'error');
+      return;
+    }
+
+    const active = res.items.find((item) => item.is_active);
+    renderCurrent(active);
+
+    if (res.items.length === 0) {
+      iconHistory.innerHTML = '<div style="color:var(--text-3);font-size:13px">暂无历史图标</div>';
+      return;
+    }
+
+    iconHistory.innerHTML = res.items
+      .map(
+        (row) => `
+          <figure class="icon-item${row.is_active ? ' is-active' : ''}">
+            <img class="icon-item__img" src="${escapeHtml(row.url)}" alt="" loading="lazy" decoding="async" />
+            <figcaption class="icon-item__meta" title="${escapeHtml(row.original_name)}">
+              ${row.is_active ? '<span class="icon-item__badge">ACTIVE · </span>' : ''}
+              ${escapeHtml(row.original_name)}
+            </figcaption>
+            <div class="icon-item__actions">
+              <button data-activate="${row.id}" type="button" ${row.is_active ? 'disabled' : ''}>
+                ${row.is_active ? '当前' : '应用'}
+              </button>
+              <button data-del-icon="${row.id}" type="button">删除</button>
+            </div>
+          </figure>`
+      )
+      .join('');
+
+    iconHistory.querySelectorAll<HTMLButtonElement>('[data-activate]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        try {
+          await adminFetch(`/api/admin/site-icons/${btn.dataset.activate}/activate`, {
+            method: 'PUT',
+          });
+          toast('已重新应用（前台约 1 分钟后生效）');
+          loadIcons();
+        } catch (err) {
+          toast(`应用失败：${(err as Error).message}`, 'error');
+        }
+      })
+    );
+
+    iconHistory.querySelectorAll<HTMLButtonElement>('[data-del-icon]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        if (!confirmDanger('确认删除该历史图标？若为当前图标将回退默认。')) return;
+        try {
+          await adminFetch(`/api/admin/site-icons/${btn.dataset.delIcon}`, { method: 'DELETE' });
+          toast('已删除（前台约 1 分钟后生效）');
+          loadIcons();
+        } catch (err) {
+          toast(`删除失败：${(err as Error).message}`, 'error');
+        }
+      })
+    );
+  }
+
+  document.getElementById('iconUploadBtn')!.addEventListener('click', () => iconFile.click());
+  iconFile.addEventListener('change', async () => {
+    const file = iconFile.files?.[0];
+    iconFile.value = '';
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file, file.name);
+    try {
+      await adminFetch('/api/admin/site-icons', { method: 'POST', body: form });
+      toast('图标已上传并应用（前台约 1 分钟后生效）');
+      loadIcons();
+    } catch (err) {
+      toast(`上传失败：${(err as Error).message}`, 'error');
+    }
+  });
 
   document.getElementById('saveBtn')!.addEventListener('click', async () => {
     const payload: Record<string, string> = {};
@@ -139,5 +375,6 @@ const groups = [
     }
   });
 
-  load();
+  loadSettings();
+  loadIcons();
 </script>
