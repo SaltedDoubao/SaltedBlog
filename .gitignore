@@ -1,2 +1,24 @@
 # local files
 .local/
+
+# runtime data (database, uploads, backups)
+data/
+backups/
+
+# env
+.env
+*.env.local
+
+# node
+node_modules/
+web/dist/
+web/.astro/
+
+# rust
+api/target/
+
+# misc
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini
