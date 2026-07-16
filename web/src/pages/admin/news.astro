@@ -1,0 +1,884 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="情报管理" eyebrow="NEWS / INTEL PIPELINE" active="news">
+  <Fragment slot="actions">
+    <button class="btn btn--sm" id="fetchAllBtn" type="button">立即采集全部</button>
+    <button class="btn btn--primary btn--sm" id="generateBtn" type="button">生成今日日报</button>
+  </Fragment>
+
+  <div class="admin-panel">
+    <div class="admin-panel__head">
+      <span>PIPELINE / 运行配置</span>
+      <button class="btn btn--sm" id="saveSettingsBtn" type="button">保存配置</button>
+    </div>
+    <div class="admin-panel__body">
+      <div class="form-grid">
+        <div class="form-field">
+          <label class="label">定时任务总开关</label>
+          <select class="select" data-news-setting="news_enabled">
+            <option value="false">关闭（仅手动操作）</option>
+            <option value="true">开启（自动采集 + 每日日报）</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="label">采集间隔（小时）</label>
+          <input class="input" data-news-setting="news_fetch_interval_hours" type="number" min="1" max="24" />
+        </div>
+        <div class="form-field">
+          <label class="label">日报生成时间（HH:MM，站点时区）</label>
+          <input class="input" data-news-setting="news_digest_time" placeholder="08:00" />
+        </div>
+        <div class="form-field">
+          <label class="label">生成后处理</label>
+          <select class="select" data-news-setting="news_digest_auto_publish">
+            <option value="true">自动发布文章</option>
+            <option value="false">保存为草稿（人工审核后发布）</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="label">LLM Base URL（OpenAI 兼容）</label>
+          <input class="input" data-news-setting="news_llm_base_url" placeholder="https://api.deepseek.com/v1" />
+        </div>
+        <div class="form-field">
+          <label class="label">LLM 模型名</label>
+          <input class="input" data-news-setting="news_llm_model" placeholder="deepseek-chat" />
+        </div>
+        <div class="form-field">
+          <label class="label">条目保留天数</label>
+          <input class="input" data-news-setting="news_retention_days" type="number" min="1" />
+        </div>
+        <div class="form-field">
+          <label class="label">采集日志保留天数</label>
+          <input class="input" data-news-setting="news_log_retention_days" type="number" min="1" />
+        </div>
+        <div class="form-field form-field--full">
+          <label class="label">附加编辑偏好（拼接进系统提示词，可空）</label>
+          <textarea class="textarea" data-news-setting="news_llm_extra_prompt" rows="3" placeholder="例：优先关注 Agent 与推理相关进展；淡化融资新闻。"></textarea>
+        </div>
+      </div>
+      <p class="news-hint">
+        API Key 通过服务端环境变量 <code>NEWS_LLM_API_KEY</code> 配置（不落库），修改后需重启 API。
+        定时生成失败的日期不会自动重试，可在下方任务列表确认后手动重新生成。
+      </p>
+    </div>
+  </div>
+
+  <div class="admin-panel">
+    <div class="admin-panel__head">
+      <span>SOURCES / 信源管理</span>
+      <button class="btn btn--sm" id="newSourceBtn" type="button">+ 新增信源</button>
+    </div>
+    <div class="admin-panel__body" id="sourceForm" hidden>
+      <div class="form-grid">
+        <div class="form-field">
+          <label class="label">名称 *</label>
+          <input class="input" data-field="name" />
+        </div>
+        <div class="form-field">
+          <label class="label">类型 *</label>
+          <select class="select" data-field="source_type">
+            <option value="rss">RSS / Atom</option>
+            <option value="github_trending">GitHub Trending</option>
+          </select>
+        </div>
+        <div class="form-field form-field--full">
+          <label class="label">URL *（GitHub Trending 可填 https://github.com/trending 占位）</label>
+          <input class="input" data-field="url" placeholder="https://…" />
+        </div>
+        <div class="form-field">
+          <label class="label">分类标签（参与选稿多样性控制）</label>
+          <input class="input" data-field="category" placeholder="如：社区热榜 / 论文前沿" />
+        </div>
+        <div class="form-field">
+          <label class="label">内容语言</label>
+          <select class="select" data-field="language">
+            <option value="zh">中文</option>
+            <option value="en">英文</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="label">包含关键词（逗号分隔，空=不限制）</label>
+          <input class="input" data-field="include_keywords" />
+        </div>
+        <div class="form-field">
+          <label class="label">排除关键词（逗号分隔）</label>
+          <input class="input" data-field="exclude_keywords" />
+        </div>
+        <div class="form-field">
+          <label class="label">单次抓取上限（1-100）</label>
+          <input class="input" data-field="max_items" type="number" value="30" min="1" max="100" />
+        </div>
+        <div class="form-field">
+          <label class="label">选稿权重（0-2）</label>
+          <input class="input" data-field="weight" type="number" value="1.0" min="0" max="2" step="0.1" />
+        </div>
+        <div class="form-field">
+          <label class="label">启用采集</label>
+          <select class="select" data-field="enabled">
+            <option value="true">启用</option>
+            <option value="false">停用</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="label">进入日报候选池</label>
+          <select class="select" data-field="send_to_llm">
+            <option value="true">是</option>
+            <option value="false">否（仅囤数据）</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="label">GitHub 语言过滤（仅 Trending，空=全部）</label>
+          <input class="input" data-field="github_language" placeholder="rust / python…" />
+        </div>
+        <div class="form-field">
+          <label class="label">GitHub 时间范围（仅 Trending）</label>
+          <select class="select" data-field="github_since">
+            <option value="daily">daily</option>
+            <option value="weekly">weekly</option>
+            <option value="monthly">monthly</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="label">最低 Star 数（仅 Trending，0=不限）</label>
+          <input class="input" data-field="min_stars" type="number" value="0" min="0" />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--primary btn--sm" id="saveSourceBtn" type="button">保存</button>
+        <button class="btn btn--sm" id="cancelSourceBtn" type="button">取消</button>
+      </div>
+    </div>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th style="width:44px">ID</th>
+          <th>名称</th>
+          <th>类型</th>
+          <th>分类</th>
+          <th style="width:70px">权重</th>
+          <th style="width:110px">状态</th>
+          <th style="width:250px">操作</th>
+        </tr>
+      </thead>
+      <tbody id="sourcesBody">
+        <tr><td colspan="7" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
+      </tbody>
+    </table>
+    <div class="admin-panel__body" id="testResult" hidden></div>
+  </div>
+
+  <div class="admin-panel">
+    <div class="admin-panel__head">
+      <span>DIGEST / 日报任务</span>
+      <button class="btn btn--sm" id="refreshJobsBtn" type="button">刷新</button>
+    </div>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th style="width:44px">ID</th>
+          <th>日期</th>
+          <th>触发</th>
+          <th>状态</th>
+          <th>候选/选中</th>
+          <th>模型</th>
+          <th>文章</th>
+          <th>信息</th>
+        </tr>
+      </thead>
+      <tbody id="jobsBody">
+        <tr><td colspan="8" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="admin-panel">
+    <div class="admin-panel__head">
+      <span>ITEMS / 条目审计</span>
+      <span style="display:flex;gap:10px;align-items:center">
+        <select class="select select--sm" id="itemStatusFilter">
+          <option value="">全部状态</option>
+          <option value="pending">pending（待选）</option>
+          <option value="excluded">excluded（被过滤）</option>
+          <option value="processed">processed（已消费）</option>
+        </select>
+        <select class="select select--sm" id="itemSourceFilter">
+          <option value="">全部信源</option>
+        </select>
+      </span>
+    </div>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th style="width:44px">ID</th>
+          <th>标题</th>
+          <th>信源</th>
+          <th style="width:110px">状态</th>
+          <th>原因/关键词</th>
+          <th style="width:150px">抓取时间</th>
+        </tr>
+      </thead>
+      <tbody id="itemsBody">
+        <tr><td colspan="6" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
+      </tbody>
+    </table>
+    <div class="admin-panel__body news-pager">
+      <button class="btn btn--sm" id="itemsPrevBtn" type="button">上一页</button>
+      <span class="mono" id="itemsPageInfo">-</span>
+      <button class="btn btn--sm" id="itemsNextBtn" type="button">下一页</button>
+    </div>
+  </div>
+
+  <div class="admin-panel">
+    <div class="admin-panel__head">
+      <span>LOGS / 采集日志</span>
+      <button class="btn btn--sm" id="refreshLogsBtn" type="button">刷新</button>
+    </div>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th style="width:44px">ID</th>
+          <th>信源</th>
+          <th>状态</th>
+          <th>抓取/新增/重复/排除</th>
+          <th>HTTP</th>
+          <th>错误</th>
+          <th style="width:150px">时间</th>
+        </tr>
+      </thead>
+      <tbody id="logsBody">
+        <tr><td colspan="7" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</AdminLayout>
+
+<style>
+  .news-hint {
+    margin: 16px 0 0;
+    font-size: 12.5px;
+    color: var(--text-3);
+    line-height: 1.7;
+  }
+
+  .news-hint code {
+    font-family: var(--font-data);
+    color: var(--accent-text);
+  }
+
+  .news-pager {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-top: var(--space-4);
+    font-size: 12px;
+  }
+
+  :global(.badge--pending) {
+    color: var(--accent-text);
+  }
+
+  :global(.badge--excluded) {
+    color: var(--text-3);
+  }
+
+  :global(.badge--processed) {
+    color: #1c7d38;
+  }
+
+  :global([data-theme='dark'] .badge--processed) {
+    color: #4fd06a;
+  }
+
+  :global(.badge--failed) {
+    color: #c0392b;
+  }
+
+  :global(.badge--running) {
+    color: #b8860b;
+  }
+
+  :global(.news-test-list) {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 10px;
+  }
+
+  :global(.news-test-list li) {
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+</style>
+
+<script>
+  import { adminFetch, confirmDanger, escapeHtml, toast } from '@/lib/admin-client';
+
+  interface Source {
+    id: number;
+    name: string;
+    source_type: string;
+    url: string;
+    category: string | null;
+    language: string;
+    include_keywords: string | null;
+    exclude_keywords: string | null;
+    max_items: number;
+    enabled: boolean;
+    send_to_llm: boolean;
+    weight: number;
+    github_language: string | null;
+    github_since: string | null;
+    min_stars: number | null;
+  }
+
+  interface Job {
+    id: number;
+    digest_date: string;
+    trigger: string;
+    status: string;
+    raw_count: number;
+    selected_count: number;
+    error_message: string | null;
+    llm_model: string | null;
+    post_id_zh: number | null;
+    post_id_en: number | null;
+    started_at: string;
+    finished_at: string | null;
+  }
+
+  interface NewsItem {
+    id: number;
+    source_id: number;
+    source_name: string | null;
+    title: string;
+    url: string | null;
+    status: string;
+    filter_reason: string | null;
+    matched_keywords: string | null;
+    fetched_at: string;
+  }
+
+  interface FetchLog {
+    id: number;
+    source_id: number;
+    source_name: string | null;
+    status: string;
+    fetched_count: number;
+    new_count: number;
+    duplicate_count: number;
+    excluded_count: number;
+    http_status: number | null;
+    error_message: string | null;
+    started_at: string;
+  }
+
+  const NEWS_SETTING_KEYS = [
+    'news_enabled',
+    'news_fetch_interval_hours',
+    'news_digest_time',
+    'news_digest_auto_publish',
+    'news_llm_base_url',
+    'news_llm_model',
+    'news_llm_extra_prompt',
+    'news_retention_days',
+    'news_log_retention_days',
+  ];
+
+  const settingInputs = Array.from(
+    document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+      '[data-news-setting]'
+    )
+  );
+  const sourceForm = document.getElementById('sourceForm')!;
+  const sourcesBody = document.getElementById('sourcesBody')!;
+  const testResult = document.getElementById('testResult')!;
+  const jobsBody = document.getElementById('jobsBody')!;
+  const itemsBody = document.getElementById('itemsBody')!;
+  const logsBody = document.getElementById('logsBody')!;
+  const itemStatusFilter = document.getElementById('itemStatusFilter') as HTMLSelectElement;
+  const itemSourceFilter = document.getElementById('itemSourceFilter') as HTMLSelectElement;
+  const itemsPageInfo = document.getElementById('itemsPageInfo')!;
+
+  let sources: Source[] = [];
+  let editingSourceId: number | null = null;
+  let itemsPage = 1;
+  let itemsTotal = 0;
+  const ITEMS_PAGE_SIZE = 20;
+  let jobsPollTimer: number | null = null;
+
+  const field = (name: string) =>
+    sourceForm.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-field="${name}"]`)!;
+
+  const fmtTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+
+  const statusBadge = (status: string) =>
+    `<span class="badge badge--${escapeHtml(status)}">${escapeHtml(status)}</span>`;
+
+  // ---------- 运行配置 ----------
+
+  async function loadSettings() {
+    try {
+      const all = await adminFetch<Record<string, string>>('/api/admin/settings');
+      for (const el of settingInputs) {
+        const key = el.dataset.newsSetting!;
+        if (all[key] !== undefined) el.value = all[key];
+      }
+    } catch (err) {
+      toast(`配置加载失败：${(err as Error).message}`, 'error');
+    }
+  }
+
+  document.getElementById('saveSettingsBtn')!.addEventListener('click', async () => {
+    const payload: Record<string, string> = {};
+    for (const el of settingInputs) {
+      const key = el.dataset.newsSetting!;
+      if (NEWS_SETTING_KEYS.includes(key)) payload[key] = el.value;
+    }
+    const time = payload['news_digest_time'] ?? '';
+    if (!/^\d{1,2}:\d{2}$/.test(time)) {
+      toast('日报生成时间格式应为 HH:MM', 'error');
+      return;
+    }
+    try {
+      await adminFetch('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });
+      toast('配置已保存（调度器约 1 分钟内生效）');
+    } catch (err) {
+      toast(`保存失败：${(err as Error).message}`, 'error');
+    }
+  });
+
+  // ---------- 信源管理 ----------
+
+  function openSourceForm(row?: Source) {
+    editingSourceId = row?.id ?? null;
+    field('name').value = row?.name ?? '';
+    field('source_type').value = row?.source_type ?? 'rss';
+    field('url').value = row?.url ?? '';
+    field('category').value = row?.category ?? '';
+    field('language').value = row?.language ?? 'zh';
+    field('include_keywords').value = row?.include_keywords ?? '';
+    field('exclude_keywords').value = row?.exclude_keywords ?? '';
+    field('max_items').value = String(row?.max_items ?? 30);
+    field('weight').value = String(row?.weight ?? 1.0);
+    field('enabled').value = String(row?.enabled ?? true);
+    field('send_to_llm').value = String(row?.send_to_llm ?? true);
+    field('github_language').value = row?.github_language ?? '';
+    field('github_since').value = row?.github_since ?? 'daily';
+    field('min_stars').value = String(row?.min_stars ?? 0);
+    sourceForm.hidden = false;
+    field('name').focus();
+  }
+
+  async function loadSources() {
+    try {
+      const res = await adminFetch<{ items: Source[] }>('/api/admin/news/sources');
+      sources = res.items;
+    } catch (err) {
+      toast(`信源加载失败：${(err as Error).message}`, 'error');
+      return;
+    }
+
+    itemSourceFilter.innerHTML =
+      '<option value="">全部信源</option>' +
+      sources
+        .map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`)
+        .join('');
+
+    if (sources.length === 0) {
+      sourcesBody.innerHTML =
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-3)">暂无信源</td></tr>';
+      return;
+    }
+    sourcesBody.innerHTML = sources
+      .map(
+        (row) => `
+        <tr>
+          <td class="mono">${row.id}</td>
+          <td style="font-weight:600" title="${escapeHtml(row.url)}">${escapeHtml(row.name)}</td>
+          <td class="mono">${escapeHtml(row.source_type)}</td>
+          <td>${row.category ? escapeHtml(row.category) : '<span style="color:var(--text-3)">—</span>'}</td>
+          <td class="mono">${row.weight.toFixed(1)}</td>
+          <td>
+            <span class="badge ${row.enabled ? 'badge--published' : 'badge--draft'}">${row.enabled ? '采集中' : '停用'}</span>
+            ${row.send_to_llm ? '' : '<span class="badge badge--draft" title="不进日报候选池">囤数据</span>'}
+          </td>
+          <td>
+            <div class="cell-actions">
+              <button class="btn btn--sm" data-test="${row.id}" type="button">试抓</button>
+              <button class="btn btn--sm" data-fetch="${row.id}" type="button">采集</button>
+              <button class="btn btn--sm" data-edit="${row.id}" type="button">编辑</button>
+              <button class="btn btn--sm btn--danger" data-del="${row.id}" type="button">删除</button>
+            </div>
+          </td>
+        </tr>`
+      )
+      .join('');
+
+    sourcesBody.querySelectorAll<HTMLButtonElement>('[data-edit]').forEach((btn) =>
+      btn.addEventListener('click', () => {
+        const row = sources.find((s) => s.id === Number(btn.dataset.edit));
+        if (row) openSourceForm(row);
+      })
+    );
+    sourcesBody.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        if (!confirmDanger('确认删除该信源？其原始条目与采集日志将一并清除（已生成的日报文章不受影响）。'))
+          return;
+        try {
+          await adminFetch(`/api/admin/news/sources/${btn.dataset.del}`, { method: 'DELETE' });
+          toast('已删除');
+          loadSources();
+        } catch (err) {
+          toast(`删除失败：${(err as Error).message}`, 'error');
+        }
+      })
+    );
+    sourcesBody.querySelectorAll<HTMLButtonElement>('[data-test]').forEach((btn) =>
+      btn.addEventListener('click', () => testSource(Number(btn.dataset.test), btn))
+    );
+    sourcesBody.querySelectorAll<HTMLButtonElement>('[data-fetch]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = '采集中…';
+        try {
+          const res = await adminFetch<{ summary: { new: number; duplicate: number; excluded: number; error: string | null } }>(
+            `/api/admin/news/sources/${btn.dataset.fetch}/fetch`,
+            { method: 'POST' }
+          );
+          const s = res.summary;
+          toast(
+            s.error
+              ? `采集完成但有错误：${s.error}`
+              : `采集完成：新增 ${s.new}，重复 ${s.duplicate}，排除 ${s.excluded}`,
+            s.error ? 'error' : 'ok'
+          );
+          loadLogs();
+          loadItems();
+        } catch (err) {
+          toast(`采集失败：${(err as Error).message}`, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '采集';
+        }
+      })
+    );
+  }
+
+  interface TestSample {
+    title: string;
+    url: string | null;
+    summary: string | null;
+    would_accept: boolean;
+    filter_reason: string | null;
+    matched_keywords: string[];
+  }
+
+  async function testSource(id: number, btn: HTMLButtonElement) {
+    btn.disabled = true;
+    btn.textContent = '试抓中…';
+    testResult.hidden = false;
+    testResult.innerHTML = '<div style="color:var(--text-3)">正在试抓，不会写入数据库…</div>';
+    try {
+      const res = await adminFetch<{
+        total: number;
+        http_status: number | null;
+        error: string | null;
+        samples: TestSample[];
+      }>(`/api/admin/news/sources/${id}/test`, { method: 'POST' });
+      const head = `<div class="label" style="margin-bottom:10px">试抓结果：共 ${res.total} 条${
+        res.http_status ? `（HTTP ${res.http_status}）` : ''
+      }${res.error ? ` · <span style="color:#c0392b">${escapeHtml(res.error)}</span>` : ''}</div>`;
+      const list = res.samples.length
+        ? `<ul class="news-test-list">${res.samples
+            .map(
+              (s) => `<li>
+                <div style="font-weight:600">${
+                  s.url
+                    ? `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener" style="color:var(--accent-text)">${escapeHtml(s.title)}</a>`
+                    : escapeHtml(s.title)
+                }</div>
+                ${s.summary ? `<div style="color:var(--text-2);margin-top:4px">${escapeHtml(s.summary.slice(0, 160))}${s.summary.length > 160 ? '…' : ''}</div>` : ''}
+                <div style="margin-top:6px">${
+                  s.would_accept
+                    ? '<span class="badge badge--published">将入候选</span>'
+                    : `<span class="badge badge--excluded">将被过滤</span> <span class="mono" style="font-size:11px;color:var(--text-3)">${escapeHtml(s.filter_reason ?? '')}</span>`
+                }${s.matched_keywords.length ? ` <span class="mono" style="font-size:11px;color:var(--text-3)">命中：${escapeHtml(s.matched_keywords.join(','))}</span>` : ''}</div>
+              </li>`
+            )
+            .join('')}</ul>`
+        : '<div style="color:var(--text-3)">无样本</div>';
+      testResult.innerHTML = head + list;
+    } catch (err) {
+      testResult.innerHTML = `<div style="color:#c0392b">试抓失败：${escapeHtml((err as Error).message)}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '试抓';
+    }
+  }
+
+  document.getElementById('newSourceBtn')!.addEventListener('click', () => openSourceForm());
+  document.getElementById('cancelSourceBtn')!.addEventListener('click', () => {
+    sourceForm.hidden = true;
+    editingSourceId = null;
+  });
+  document.getElementById('saveSourceBtn')!.addEventListener('click', async () => {
+    const payload = {
+      name: field('name').value.trim(),
+      source_type: field('source_type').value,
+      url: field('url').value.trim(),
+      category: field('category').value.trim() || null,
+      language: field('language').value,
+      include_keywords: field('include_keywords').value.trim() || null,
+      exclude_keywords: field('exclude_keywords').value.trim() || null,
+      max_items: Number(field('max_items').value) || 30,
+      weight: Number(field('weight').value) || 1.0,
+      enabled: field('enabled').value === 'true',
+      send_to_llm: field('send_to_llm').value === 'true',
+      github_language: field('github_language').value.trim() || null,
+      github_since: field('github_since').value,
+      min_stars: Number(field('min_stars').value) || null,
+    };
+    if (!payload.name || !payload.url) {
+      toast('名称与 URL 必填', 'error');
+      return;
+    }
+    try {
+      if (editingSourceId) {
+        await adminFetch(`/api/admin/news/sources/${editingSourceId}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await adminFetch('/api/admin/news/sources', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
+      toast('已保存');
+      sourceForm.hidden = true;
+      editingSourceId = null;
+      loadSources();
+    } catch (err) {
+      toast(`保存失败：${(err as Error).message}`, 'error');
+    }
+  });
+
+  // ---------- 全量采集 / 生成日报 ----------
+
+  document.getElementById('fetchAllBtn')!.addEventListener('click', async (event) => {
+    const btn = event.currentTarget as HTMLButtonElement;
+    btn.disabled = true;
+    btn.textContent = '采集中…';
+    try {
+      const res = await adminFetch<{ summaries: { new: number; error: string | null }[] }>(
+        '/api/admin/news/fetch-all',
+        { method: 'POST' }
+      );
+      const totalNew = res.summaries.reduce((sum, s) => sum + s.new, 0);
+      const failed = res.summaries.filter((s) => s.error).length;
+      toast(`采集完成：${res.summaries.length} 个信源，新增 ${totalNew} 条${failed ? `，${failed} 个源有错误` : ''}`);
+      loadLogs();
+      loadItems();
+    } catch (err) {
+      toast(`采集失败：${(err as Error).message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '立即采集全部';
+    }
+  });
+
+  async function requestGenerate(force: boolean) {
+    try {
+      await adminFetch('/api/admin/news/digest/generate', {
+        method: 'POST',
+        body: JSON.stringify({ force }),
+      });
+      toast('已提交生成任务，请在「日报任务」中查看进度');
+      startJobsPolling();
+    } catch (err) {
+      const message = (err as Error).message;
+      if (!force && message.includes('已存在')) {
+        if (confirmDanger('当日已存在日报任务。强制重新生成将覆盖当日文章（保留阅读量与评论），是否继续？')) {
+          await requestGenerate(true);
+        }
+        return;
+      }
+      toast(`生成失败：${message}`, 'error');
+    }
+  }
+
+  document.getElementById('generateBtn')!.addEventListener('click', () => requestGenerate(false));
+
+  // ---------- 日报任务 ----------
+
+  async function loadJobs(): Promise<Job[]> {
+    let jobs: Job[] = [];
+    try {
+      const res = await adminFetch<{ items: Job[] }>('/api/admin/news/jobs?page_size=20');
+      jobs = res.items;
+    } catch (err) {
+      toast(`任务加载失败：${(err as Error).message}`, 'error');
+      return [];
+    }
+    if (jobs.length === 0) {
+      jobsBody.innerHTML =
+        '<tr><td colspan="8" style="text-align:center;color:var(--text-3)">暂无任务，配置 LLM 后点击「生成今日日报」</td></tr>';
+      return jobs;
+    }
+    jobsBody.innerHTML = jobs
+      .map(
+        (job) => `
+        <tr>
+          <td class="mono">${job.id}</td>
+          <td class="mono">${escapeHtml(job.digest_date)}</td>
+          <td class="mono">${escapeHtml(job.trigger)}</td>
+          <td>${statusBadge(job.status)}</td>
+          <td class="mono">${job.raw_count} / ${job.selected_count}</td>
+          <td class="mono">${job.llm_model ? escapeHtml(job.llm_model) : '—'}</td>
+          <td>${
+            job.post_id_zh
+              ? `<a class="btn btn--sm" href="/admin/posts/edit?id=${job.post_id_zh}">中文</a> ` +
+                (job.post_id_en ? `<a class="btn btn--sm" href="/admin/posts/edit?id=${job.post_id_en}">EN</a>` : '')
+              : '<span style="color:var(--text-3)">—</span>'
+          }</td>
+          <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(job.error_message ?? '')}">${
+            job.error_message ? escapeHtml(job.error_message) : `<span style="color:var(--text-3)">${fmtTime(job.finished_at)}</span>`
+          }</td>
+        </tr>`
+      )
+      .join('');
+    return jobs;
+  }
+
+  function startJobsPolling() {
+    if (jobsPollTimer !== null) return;
+    let polls = 0;
+    jobsPollTimer = window.setInterval(async () => {
+      polls += 1;
+      const jobs = await loadJobs();
+      const hasRunning = jobs.some((job) => job.status === 'running');
+      if ((!hasRunning && polls > 1) || polls > 240) {
+        window.clearInterval(jobsPollTimer!);
+        jobsPollTimer = null;
+      }
+    }, 5000);
+  }
+
+  document.getElementById('refreshJobsBtn')!.addEventListener('click', loadJobs);
+
+  // ---------- 条目审计 ----------
+
+  async function loadItems() {
+    const params = new URLSearchParams({
+      page: String(itemsPage),
+      page_size: String(ITEMS_PAGE_SIZE),
+    });
+    if (itemStatusFilter.value) params.set('status', itemStatusFilter.value);
+    if (itemSourceFilter.value) params.set('source_id', itemSourceFilter.value);
+    let res: { items: NewsItem[]; total: number };
+    try {
+      res = await adminFetch(`/api/admin/news/items?${params}`);
+    } catch (err) {
+      toast(`条目加载失败：${(err as Error).message}`, 'error');
+      return;
+    }
+    itemsTotal = res.total;
+    const pages = Math.max(1, Math.ceil(itemsTotal / ITEMS_PAGE_SIZE));
+    itemsPageInfo.textContent = `${itemsPage} / ${pages}（共 ${itemsTotal} 条）`;
+    if (res.items.length === 0) {
+      itemsBody.innerHTML =
+        '<tr><td colspan="6" style="text-align:center;color:var(--text-3)">暂无条目</td></tr>';
+      return;
+    }
+    itemsBody.innerHTML = res.items
+      .map(
+        (item) => `
+        <tr>
+          <td class="mono">${item.id}</td>
+          <td style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${
+            item.url
+              ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener" style="color:inherit" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</a>`
+              : escapeHtml(item.title)
+          }</td>
+          <td>${item.source_name ? escapeHtml(item.source_name) : `#${item.source_id}`}</td>
+          <td>${statusBadge(item.status)}</td>
+          <td class="mono" style="font-size:11px;color:var(--text-3)">${escapeHtml(
+            item.filter_reason ?? item.matched_keywords ?? '—'
+          )}</td>
+          <td class="mono" style="font-size:11px">${fmtTime(item.fetched_at)}</td>
+        </tr>`
+      )
+      .join('');
+  }
+
+  itemStatusFilter.addEventListener('change', () => {
+    itemsPage = 1;
+    loadItems();
+  });
+  itemSourceFilter.addEventListener('change', () => {
+    itemsPage = 1;
+    loadItems();
+  });
+  document.getElementById('itemsPrevBtn')!.addEventListener('click', () => {
+    if (itemsPage > 1) {
+      itemsPage -= 1;
+      loadItems();
+    }
+  });
+  document.getElementById('itemsNextBtn')!.addEventListener('click', () => {
+    if (itemsPage * ITEMS_PAGE_SIZE < itemsTotal) {
+      itemsPage += 1;
+      loadItems();
+    }
+  });
+
+  // ---------- 采集日志 ----------
+
+  async function loadLogs() {
+    let res: { items: FetchLog[] };
+    try {
+      res = await adminFetch('/api/admin/news/logs?page_size=20');
+    } catch (err) {
+      toast(`日志加载失败：${(err as Error).message}`, 'error');
+      return;
+    }
+    if (res.items.length === 0) {
+      logsBody.innerHTML =
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-3)">暂无采集记录</td></tr>';
+      return;
+    }
+    logsBody.innerHTML = res.items
+      .map(
+        (log) => `
+        <tr>
+          <td class="mono">${log.id}</td>
+          <td>${log.source_name ? escapeHtml(log.source_name) : `#${log.source_id}`}</td>
+          <td>${statusBadge(log.status)}</td>
+          <td class="mono">${log.fetched_count} / ${log.new_count} / ${log.duplicate_count} / ${log.excluded_count}</td>
+          <td class="mono">${log.http_status ?? '—'}</td>
+          <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(log.error_message ?? '')}">${
+            log.error_message ? escapeHtml(log.error_message) : '<span style="color:var(--text-3)">—</span>'
+          }</td>
+          <td class="mono" style="font-size:11px">${fmtTime(log.started_at)}</td>
+        </tr>`
+      )
+      .join('');
+  }
+
+  document.getElementById('refreshLogsBtn')!.addEventListener('click', loadLogs);
+
+  // ---------- 初始化 ----------
+
+  loadSettings();
+  loadSources();
+  loadJobs().then((jobs) => {
+    if (jobs.some((job) => job.status === 'running')) startJobsPolling();
+  });
+  loadItems();
+  loadLogs();
+</script>

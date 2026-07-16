@@ -201,6 +201,44 @@ export function getAbout(lang: string): Promise<{ html: string; toc: TocItem[] }
   return apiFetch(`/api/about?lang=${lang}`);
 }
 
+// ---- AI 日报 ----
+
+export interface DigestItemOut {
+  title_zh: string;
+  title_en: string;
+  summary_zh: string;
+  summary_en: string;
+  why_zh: string;
+  why_en: string;
+  source: string;
+  url: string | null;
+  importance: number;
+  tags: string[];
+  anchor: string;
+}
+
+export interface LatestDigest {
+  date: string;
+  slug: string;
+  title_zh: string;
+  title_en: string;
+  summary_zh: string;
+  summary_en: string;
+  item_count: number;
+  generated_at: string | null;
+  items: DigestItemOut[];
+}
+
+/** 最新一期已发布的 AI 日报；无日报或接口异常时返回 null（主页显示空状态） */
+export async function getLatestDigest(): Promise<LatestDigest | null> {
+  try {
+    const res = await apiFetch<{ digest: LatestDigest | null }>('/api/news/latest');
+    return res.digest;
+  } catch {
+    return null;
+  }
+}
+
 export function getSitemapData(): Promise<SitemapData> {
   return apiFetch('/api/sitemap');
 }

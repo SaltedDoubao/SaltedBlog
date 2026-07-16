@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import { getFriends, getPosts, getSettingsCached, getTaxonomy } from '@/lib/api';
-import { formatDate, localName, localePath, t, type Lang } from '@/i18n';
+import { getFriends, getLatestDigest, getPosts, getSettingsCached, getTaxonomy } from '@/lib/api';
+import { localePath, t, type Lang } from '@/i18n';
 
 interface Props {
   lang: Lang;
@@ -9,18 +9,21 @@ interface Props {
 
 const { lang } = Astro.props;
 
-const [postsRes, taxonomy, settings, friendsRes] = await Promise.all([
+const [postsRes, taxonomy, settings, friendsRes, digest] = await Promise.all([
   getPosts({ lang, page: 1, pageSize: 3 }),
   getTaxonomy(lang),
   getSettingsCached(),
   getFriends(),
+  getLatestDigest(),
 ]);
 
 const ui = {
   zh: {
     eyebrow: '个人博客 / 越过边界',
     newsTitle: '最新情报',
-    newsDescription: '按时间顺序接收来自技术与生活前线的最新记录。',
+    newsDescription: '由 AI 情报管线每日聚合的前沿信号，点击进入完整日报。',
+    digestEmpty: '情报信号待接入 / 管线尚未生成日报',
+    digestOpen: '阅读完整日报',
     worldTitle: '内容疆域',
     worldDescription: '沿分类、系列与时间坐标进入博客的不同区域。',
     systemTitle: '内容部署系统',
@@ -75,7 +78,9 @@ const ui = {
   en: {
     eyebrow: 'PERSONAL BLOG / OVER THE FRONTIER',
     newsTitle: 'Latest Intelligence',
-    newsDescription: 'Fresh signals from the frontiers of technology and life, ordered by time.',
+    newsDescription: 'Frontier signals aggregated daily by the AI intel pipeline. Open the full digest.',
+    digestEmpty: 'AWAITING INTEL SIGNAL / NO DIGEST GENERATED YET',
+    digestOpen: 'Read Full Digest',
     worldTitle: 'Content Frontier',
     worldDescription: 'Enter the archive through categories, series, and chronological coordinates.',
     systemTitle: 'Content Deployment System',
@@ -144,6 +149,25 @@ const latestYear = postsRes.items[0]?.published_at
 const eyebrow = configured('home_eyebrow', ui.eyebrow);
 const newsTitle = configured('home_news_title', ui.newsTitle);
 const newsDescription = configured('home_news_description', ui.newsDescription);
+
+// ---- AI 日报数据（最新情报区 + 滚动字幕） ----
+const digestHref = digest ? localePath(lang, `/posts/${digest.slug}`) : '';
+const digestTitle = digest ? (lang === 'en' ? digest.title_en : digest.title_zh) : '';
+const digestSummary = digest ? (lang === 'en' ? digest.summary_en : digest.summary_zh) : '';
+// items 已按 importance 降序：前 2 条上卡片，前 5 条进字幕
+const digestTopItems = (digest?.items ?? []).slice(0, 2).map((item) => ({
+  title: lang === 'en' ? item.title_en : item.title_zh,
+  summary: lang === 'en' ? item.summary_en : item.summary_zh,
+  source: item.source,
+  stars: '★'.repeat(Math.min(Math.max(item.importance, 1), 5)),
+  href: `${digestHref}#${item.anchor}`,
+}));
+const tickerHeadlines = (digest?.items ?? [])
+  .slice(0, 5)
+  .map(
+    (item, index) =>
+      `INTEL ${String(index + 1).padStart(2, '0')} / ${lang === 'en' ? item.title_en : item.title_zh}`
+  );
 const worldTitle = configured('home_world_title', ui.worldTitle);
 const worldDescription = configured('home_world_description', ui.worldDescription);
 const systemTitle = configured('home_system_title', ui.systemTitle);
@@ -249,9 +273,13 @@ const portals = [
 
     <div class="ticker" aria-hidden="true">
       <div class="ticker__track mono">
-        {Array.from({ length: 4 }).map(() => (
-          <div class="ticker__item">SALTEDBLOG / CONTENT NETWORK / SIGNAL CONNECTED / ARCHIVE ONLINE</div>
-        ))}
+        {
+          tickerHeadlines.length
+            ? [0, 1].map(() => tickerHeadlines.map((headline) => <div class="ticker__item">{headline}</div>))
+            : Array.from({ length: 4 }).map(() => (
+                <div class="ticker__item">SALTEDBLOG / CONTENT NETWORK / SIGNAL CONNECTED / ARCHIVE ONLINE</div>
+              ))
+        }
       </div>
     </div>
 
@@ -264,41 +292,43 @@ const portals = [
           <p>{newsDescription}</p>
         </header>
         {
-          postsRes.items.length ? (
+          digest ? (
             <div class="news-grid">
-              {postsRes.items.map((post, index) => {
-                const href = localePath(lang, `/posts/${post.slug}`);
-                const date = formatDate(lang, post.published_at);
-                const category = localName(lang, post.category);
-                return (
-                  <article
-                    class:list={['news-card', 'interactive', { 'news-card--feature': index === 0 }]}
-                    data-reveal={index === 0 ? 'left' : index === 2 ? 'right' : ''}
-                  >
-                    <a class="news-card__visual" href={href} aria-label={post.title}>
-                      {post.cover ? (
-                        <img src={post.cover} alt="" loading="lazy" decoding="async" />
-                      ) : (
-                        <span class={`news-card__art news-card__art--${(post.id % 3) + 1}`} />
-                      )}
-                    </a>
-                    <div class="news-card__body">
-                      <div class="news-card__tag mono">
-                        {date || '---- -- --'} {category && <span>/ {category}</span>}
-                      </div>
-                      <h3><a href={href}>{post.title}</a></h3>
-                      {post.summary && <p>{post.summary}</p>}
-                      <a class="news-card__arrow" href={href} aria-label={post.title}>↗</a>
+              <article class="news-card news-card--feature interactive" data-reveal="left">
+                <a class="news-card__visual" href={digestHref} aria-label={digestTitle}>
+                  <span class="news-card__art news-card__art--1" />
+                </a>
+                <div class="news-card__body">
+                  <div class="news-card__tag mono">
+                    {digest.date} <span>/ {digest.item_count} SIGNALS</span>
+                  </div>
+                  <h3><a href={digestHref}>{digestTitle}</a></h3>
+                  {digestSummary && <p>{digestSummary}</p>}
+                  <a class="news-card__arrow" href={digestHref} aria-label={ui.digestOpen}>↗</a>
+                </div>
+              </article>
+              {digestTopItems.map((item, index) => (
+                <article class="news-card interactive" data-reveal={index === 1 ? 'right' : ''}>
+                  <a class="news-card__visual" href={item.href} aria-label={item.title}>
+                    <span class={`news-card__art news-card__art--${index + 2}`} />
+                  </a>
+                  <div class="news-card__body">
+                    <div class="news-card__tag mono">
+                      {item.stars} {item.source && <span>/ {item.source}</span>}
                     </div>
-                  </article>
-                );
-              })}
+                    <h3><a href={item.href}>{item.title}</a></h3>
+                    {item.summary && <p>{item.summary}</p>}
+                    <a class="news-card__arrow" href={item.href} aria-label={item.title}>↗</a>
+                  </div>
+                </article>
+              ))}
             </div>
           ) : (
-            <div class="home-empty mono" data-reveal>{ui.noPosts}</div>
+            <div class="home-empty mono" data-reveal>{ui.digestEmpty}</div>
           )
         }
         <div class="section-action" data-reveal>
+          {digest && <a class="home-btn home-btn--primary" href={digestHref}>{ui.digestOpen} ↗</a>}
           <a class="home-btn" href={localePath(lang, '/posts')}>{t(lang, 'home.viewAll')} →</a>
         </div>
       </div>
@@ -644,7 +674,7 @@ const portals = [
   .news-card__arrow { position: absolute; right: 22px; bottom: 22px; width: 38px; height: 38px; border: 1px solid var(--border-strong); display: grid; place-items: center; text-decoration: none; transition: 250ms; }
   .news-card:hover .news-card__arrow { background: var(--primary); color: var(--black); border-color: var(--black); transform: translate(3px,-3px); box-shadow: -3px 3px 0 var(--black); }
   .home-empty { min-height: 320px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--paper-surface); color: var(--ink-soft); }
-  .section-action { margin-top: 48px; text-align: center; }
+  .section-action { margin-top: 48px; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
 
   .world { height: 360vh; position: relative; background: var(--black); color: #fff; }
   .world__sticky { height: 100vh; position: sticky; top: 0; overflow: hidden; }

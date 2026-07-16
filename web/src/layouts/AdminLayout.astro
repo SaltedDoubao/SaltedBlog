@@ -7,7 +7,7 @@ import '@/styles/admin.css';
 interface Props {
   title: string;
   eyebrow?: string;
-  active: 'dashboard' | 'posts' | 'terms' | 'friends' | 'settings' | 'uploads' | 'backup';
+  active: 'dashboard' | 'posts' | 'news' | 'terms' | 'friends' | 'settings' | 'uploads' | 'backup';
 }
 
 const { title, eyebrow = 'ADMIN CONSOLE', active } = Astro.props;
@@ -18,11 +18,12 @@ const username = Astro.locals.adminUser ?? 'admin';
 const navItems = [
   { id: 'dashboard', href: '/admin', label: '仪表盘', index: '01' },
   { id: 'posts', href: '/admin/posts', label: '文章管理', index: '02' },
-  { id: 'terms', href: '/admin/terms', label: '分类 / 标签 / 系列', index: '03' },
-  { id: 'friends', href: '/admin/friends', label: '友情链接', index: '04' },
-  { id: 'uploads', href: '/admin/uploads', label: '图片素材', index: '05' },
-  { id: 'settings', href: '/admin/settings', label: '站点设置', index: '06' },
-  { id: 'backup', href: '/admin/backup', label: '备份管理', index: '07' },
+  { id: 'news', href: '/admin/news', label: '情报管理', index: '03' },
+  { id: 'terms', href: '/admin/terms', label: '分类 / 标签 / 系列', index: '04' },
+  { id: 'friends', href: '/admin/friends', label: '友情链接', index: '05' },
+  { id: 'uploads', href: '/admin/uploads', label: '图片素材', index: '06' },
+  { id: 'settings', href: '/admin/settings', label: '站点设置', index: '07' },
+  { id: 'backup', href: '/admin/backup', label: '备份管理', index: '08' },
 ] as const;
 ---
 
