@@ -1,0 +1,21 @@
+# SITE_DOMAIN 从环境变量注入（deploy/.env）
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	# API 与上传文件走 Rust 服务
+	@backend path /api/* /uploads/* /healthz
+	handle @backend {
+		reverse_proxy api:8080
+	}
+
+	# 其余流量走 Astro SSR
+	handle {
+		reverse_proxy web:4321
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}

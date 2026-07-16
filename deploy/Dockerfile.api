@@ -1,0 +1,32 @@
+# ============================================
+# Rust API 多阶段构建
+# 构建上下文为仓库根目录：
+#   docker build -f deploy/Dockerfile.api .
+# ============================================
+
+FROM rust:1.96-slim AS builder
+
+WORKDIR /build
+COPY api/ ./api/
+WORKDIR /build/api
+RUN cargo build --release --locked 2>/dev/null || cargo build --release
+
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=builder /build/api/target/release/salted-api /usr/local/bin/salted-api
+
+ENV BIND_ADDR=0.0.0.0:8080 \
+    UPLOAD_DIR=/data/uploads \
+    RUST_LOG=info
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
+    CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
+
+CMD ["salted-api"]

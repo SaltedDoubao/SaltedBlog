@@ -1,0 +1,12 @@
+# 构建上下文排除（deploy/Dockerfile.* 以仓库根为上下文）
+.git/
+.local/
+data/
+backups/
+web/node_modules/
+web/dist/
+web/.astro/
+api/target/
+.env
+deploy/.env
+*.log

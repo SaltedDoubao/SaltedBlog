@@ -1,0 +1,82 @@
+# ============================================
+# SaltedBlog 生产部署编排
+# 使用：
+#   cd deploy
+#   cp ../.env.example .env   # 修改域名、数据库密码、管理员密码
+#   docker compose up -d --build
+# ============================================
+
+name: saltedblog
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:8080
+      PUBLIC_SITE_URL: https://${SITE_DOMAIN}
+      PORT: "4321"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-salted}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@postgres:5432/${POSTGRES_DB:-saltedblog}
+      BIND_ADDR: 0.0.0.0:8080
+      UPLOAD_DIR: /data/uploads
+      UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-20}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      COOKIE_SECURE: "true"
+      STATS_TZ_OFFSET_HOURS: ${STATS_TZ_OFFSET_HOURS:-8}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in deploy/.env}
+      RUST_LOG: info
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-salted}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-saltedblog}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-salted} -d ${POSTGRES_DB:-saltedblog}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pg_data:
+  uploads:
