@@ -277,7 +277,7 @@ const portals = [
                   >
                     <a class="news-card__visual" href={href} aria-label={post.title}>
                       {post.cover ? (
-                        <img src={post.cover} alt="" loading={index === 0 ? 'eager' : 'lazy'} />
+                        <img src={post.cover} alt="" loading="lazy" decoding="async" />
                       ) : (
                         <span class={`news-card__art news-card__art--${(post.id % 3) + 1}`} />
                       )}
@@ -466,7 +466,7 @@ const portals = [
       </div>
     </section>
 
-    <div class="protocol-modal" id="protocolModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="protocolTitle">
+    <div class="protocol-modal is-idle" id="protocolModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="protocolTitle">
       <div class="protocol-modal__box" role="document">
         <div class="protocol-modal__visual" aria-hidden="true"></div>
         <button class="protocol-modal__close interactive" id="protocolClose" type="button" aria-label={ui.close}>×</button>
@@ -514,6 +514,17 @@ const portals = [
     background: var(--paper);
   }
 
+  .home-interface.is-page-hidden *,
+  .home-interface.is-page-hidden *::before,
+  .home-interface.is-page-hidden *::after {
+    animation-play-state: paused !important;
+  }
+
+  .home-section {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 1000px;
+  }
+
   .home-boot {
     position: fixed;
     inset: 0;
@@ -548,16 +559,16 @@ const portals = [
   .home-boot__bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--primary); box-shadow: 0 0 18px rgba(244, 246, 0, 0.55); }
   .home-boot__meta { display: flex; justify-content: space-between; margin-top: 10px; color: #9fa5a7; font-size: 10px; }
 
-  .home-cursor { position: fixed; z-index: 9000; display: none; pointer-events: none; border-radius: 50%; mix-blend-mode: difference; }
-  .home-cursor--dot { width: 5px; height: 5px; background: #fff; transform: translate(-50%, -50%); }
-  .home-cursor--ring { width: 34px; height: 34px; border: 1px solid #fff; transform: translate(-50%, -50%); transition: width 200ms, height 200ms, border-color 200ms; }
+  .home-cursor { position: fixed; z-index: 9000; display: none; top: 0; left: 0; pointer-events: none; border-radius: 50%; }
+  .home-cursor--dot { width: 5px; height: 5px; background: var(--primary); transform: translate3d(-100px,-100px,0) translate(-50%,-50%); box-shadow: 0 0 5px rgba(244,246,0,.65); }
+  .home-cursor--ring { width: 34px; height: 34px; border: 1px solid rgba(244,246,0,.9); transform: translate3d(-100px,-100px,0) translate(-50%,-50%); transition: width 200ms,height 200ms,border-color 200ms; }
   .home-cursor--ring.is-active { width: 54px; height: 54px; border-color: var(--primary); }
   @media (hover: hover) and (pointer: fine) { .home-cursor { display: block; } }
 
   .hero { min-height: 100svh; position: relative; isolation: isolate; overflow: hidden; color: #fff; background: #92999b; }
   #heroCanvas { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; }
   .hero__scene { position: absolute; inset: 0; z-index: -3; overflow: hidden; background: radial-gradient(circle at 73% 35%, rgba(244,246,0,.28), transparent 13%), radial-gradient(circle at 65% 48%, rgba(255,255,255,.55), transparent 20%), linear-gradient(120deg,#d9dddc 0%,#aeb5b6 42%,#555d60 78%,#202528 100%); }
-  .hero__scene::before { content: ''; position: absolute; inset: -10%; background: linear-gradient(115deg,transparent 0 46%,rgba(11,13,15,.65) 46.2% 47.4%,transparent 47.6%), linear-gradient(115deg,transparent 0 56%,rgba(244,246,0,.86) 56.2% 57%,transparent 57.2%), repeating-linear-gradient(115deg,transparent 0 55px,rgba(11,13,15,.08) 56px 57px), radial-gradient(ellipse at 72% 60%,#dfe3df 0 10%,transparent 10.5%), radial-gradient(ellipse at 70% 58%,rgba(11,13,15,.88) 0 15%,transparent 15.5%); transform: translate(calc(var(--mx, 0) * -12px), calc(var(--my, 0) * -8px)) scale(1.08); transition: transform 100ms linear; filter: contrast(1.08); }
+  .hero__scene::before { content: ''; position: absolute; inset: -10%; background: linear-gradient(115deg,transparent 0 46%,rgba(11,13,15,.65) 46.2% 47.4%,transparent 47.6%), linear-gradient(115deg,transparent 0 56%,rgba(244,246,0,.86) 56.2% 57%,transparent 57.2%), repeating-linear-gradient(115deg,transparent 0 55px,rgba(11,13,15,.08) 56px 57px), radial-gradient(ellipse at 72% 60%,#dfe3df 0 10%,transparent 10.5%), radial-gradient(ellipse at 70% 58%,rgba(11,13,15,.88) 0 15%,transparent 15.5%); transform: translate(calc(var(--mx, 0) * -12px), calc(var(--my, 0) * -8px)) scale(1.08); transition: transform 100ms linear; }
   .hero__scene::after { content: ''; position: absolute; left: 48%; top: 4%; width: 44vw; height: 110%; opacity: .76; background: linear-gradient(90deg,transparent 0 48%,rgba(255,255,255,.32) 48% 48.35%,transparent 48.35%), repeating-linear-gradient(90deg,transparent 0 50px,rgba(255,255,255,.09) 51px 52px), repeating-linear-gradient(0deg,rgba(11,13,15,.38) 0 4px,transparent 4px 17px); clip-path: polygon(48% 0,100% 17%,82% 100%,0 90%,21% 17%); transform: perspective(800px) rotateY(-14deg) translate(calc(var(--mx, 0) * 18px), calc(var(--my, 0) * 9px)); }
   .terrain { position: absolute; z-index: -2; pointer-events: none; }
   .terrain--back { width: 70vw; height: 58vh; right: -6vw; bottom: -10vh; opacity: .83; background: #31383b; clip-path: polygon(8% 70%,28% 24%,42% 54%,58% 0,72% 48%,100% 28%,100% 100%,0 100%); transform: translate(calc(var(--mx, 0) * 14px), calc(var(--my, 0) * 6px)); }
@@ -575,14 +586,15 @@ const portals = [
   .hero__side { align-self: end; justify-self: end; margin-bottom: 60px; width: 240px; display: grid; gap: 2px; }
   .hero__datum { padding: 14px 16px; border: 1px solid rgba(255,255,255,.25); background: rgba(11,13,15,.36); backdrop-filter: blur(8px); display: flex; justify-content: space-between; gap: 18px; font-size: 10px; clip-path: polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%); }
   .hero__datum b { color: var(--primary); }
-  .hero__stamp { position: absolute; right: 0; top: 27%; width: 148px; aspect-ratio: 1; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.42); border-radius: 50%; font-size: 9px; animation: rotate 16s linear infinite; }
+  .hero__stamp { position: absolute; right: 0; top: 27%; width: 148px; aspect-ratio: 1; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.42); border-radius: 50%; font-size: 9px; animation: rotate 16s linear infinite; animation-play-state: paused; }
   .hero__stamp::before,.hero__stamp::after { content: ''; position: absolute; inset: 12px; border: 1px dashed rgba(244,246,0,.65); border-radius: 50%; }
   .hero__stamp::after { inset: 44%; background: var(--primary); border: 0; }
   .hero__index { position: absolute; left: 48px; bottom: 22px; display: flex; align-items: flex-end; gap: 12px; color: rgba(255,255,255,.7); font-size: 9px; }
   .hero__index strong { color: #fff; font-size: 34px; line-height: 1; }
   .scroll-cue { position: absolute; right: 48px; bottom: 20px; display: flex; align-items: center; gap: 12px; color: rgba(255,255,255,.7); font-size: 9px; writing-mode: vertical-rl; }
   .scroll-cue i { width: 1px; height: 76px; overflow: hidden; position: relative; background: rgba(255,255,255,.28); }
-  .scroll-cue i::after { content: ''; position: absolute; inset: 0 0 auto; height: 24px; background: var(--primary); animation: scroll-cue 1.8s ease-in-out infinite; }
+  .scroll-cue i::after { content: ''; position: absolute; inset: 0 0 auto; height: 24px; background: var(--primary); animation: scroll-cue 1.8s ease-in-out infinite; animation-play-state: paused; }
+  .hero.is-motion-active .hero__stamp,.hero.is-motion-active .scroll-cue i::after { animation-play-state: running; }
 
   .home-btn { min-height: 52px; padding: 0 25px; border: 1px solid currentColor; border-radius: 0; display: inline-flex; gap: 13px; align-items: center; justify-content: center; background: transparent; color: inherit; text-decoration: none; cursor: pointer; font-weight: 750; position: relative; isolation: isolate; overflow: hidden; clip-path: polygon(0 0,calc(100% - 11px) 0,100% 11px,100% 100%,11px 100%,0 calc(100% - 11px)); transition: transform 180ms,box-shadow 180ms,color 180ms,border-color 180ms; }
   .home-btn::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--primary); transform: translateX(-103%); transition: transform 280ms var(--ease); }
@@ -593,7 +605,8 @@ const portals = [
   .home-btn--ghost { background: rgba(11,13,15,.26); color: #fff; backdrop-filter: blur(7px); }
 
   .ticker { height: 44px; overflow: hidden; display: flex; align-items: center; border-block: 1px solid var(--black); background: var(--primary); color: var(--black); }
-  .ticker__track { display: flex; width: max-content; animation: marquee 26s linear infinite; }
+  .ticker__track { display: flex; width: max-content; animation: marquee 26s linear infinite; animation-play-state: paused; }
+  .ticker.is-motion-active .ticker__track { animation-play-state: running; }
   .ticker__item { display: flex; align-items: center; gap: 22px; padding-right: 22px; white-space: nowrap; font-size: 11px; font-weight: 800; }
   .ticker__item::after { content: '◆'; font-size: 8px; }
 
@@ -636,12 +649,13 @@ const portals = [
   .world { height: 360vh; position: relative; background: var(--black); color: #fff; }
   .world__sticky { height: 100vh; position: sticky; top: 0; overflow: hidden; }
   .world__back { position: absolute; inset: 0; background: radial-gradient(circle at 70% 45%,rgba(244,246,0,.10),transparent 25%),linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px),#0b0d0f; background-size: auto,44px 44px,44px 44px; }
-  .world__back::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg,transparent 0 4px,rgba(255,255,255,.018) 4px 5px); animation: scan-move 8s linear infinite; }
+  .world__back::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg,transparent 0 4px,rgba(255,255,255,.018) 4px 5px); animation: scan-move 8s linear infinite; animation-play-state: paused; }
   .world__header { position: absolute; z-index: 4; top: calc(var(--header-h) + 30px); left: max(48px,calc((100vw - var(--container))/2)); max-width: 560px; pointer-events: none; }
   .world__header span { color: var(--primary); font-size: 10px; }
   .world__header h2 { margin: 8px 0 10px; font-size: clamp(46px,7vw,94px); line-height: .85; letter-spacing: -.055em; }
   .world__header p { max-width: 430px; margin: 0; color: #aeb5b7; font-size: 13px; }
-  .world__track { position: absolute; left: 0; top: 0; height: 100%; display: flex; will-change: transform; }
+  .world__track { position: absolute; left: 0; top: 0; height: 100%; display: flex; }
+  .world.is-motion-active .world__back::after { animation-play-state: running; }
   .world-panel { flex: 0 0 100vw; height: 100%; display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 190px max(48px,calc((100vw - var(--container))/2)) 60px; }
   .world-panel__art { height: min(58vh,600px); overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,.17); clip-path: polygon(0 0,calc(100% - 38px) 0,100% 38px,100% 100%,60px 100%,0 calc(100% - 60px)); }
   .world-panel__art::before { content: ''; position: absolute; inset: -10%; background: var(--portal-art); transform: translate(calc(var(--mx, 0) * 10px),calc(var(--my, 0) * 8px)) scale(1.08); }
@@ -659,7 +673,7 @@ const portals = [
   .world-panel__data span { margin-top: auto; color: #8f989a; font-size: 8px; }
   .world-panel__action { margin-top: 24px; }
   .world__progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: #252a2c; }
-  .world__progress i { display: block; width: 0; height: 100%; background: var(--primary); }
+  .world__progress i { display: block; width: 100%; height: 100%; background: var(--primary); transform: scaleX(0); transform-origin: left; will-change: transform; }
 
   .systems-layout { display: grid; grid-template-columns: 1.05fr .95fr; min-height: 720px; border: 1px solid var(--line); background: var(--paper-surface); }
   .systems-visual { min-height: 640px; overflow: hidden; position: relative; background: #151a1c; color: #fff; }
@@ -699,19 +713,21 @@ const portals = [
   .operator-copy .home-btn { margin-top: 18px; }
   .operator-code { position: absolute; left: 24px; bottom: 22px; font-size: 9px; writing-mode: vertical-rl; }
 
-  .final-cta { min-height: 78vh; display: grid; place-items: center; overflow: hidden; position: relative; background: #111517; color: #fff; text-align: center; }
-  .final-cta::before { content: ''; position: absolute; width: min(86vw,1050px); aspect-ratio: 1; border: 1px solid rgba(255,255,255,.09); border-radius: 50%; box-shadow: 0 0 0 70px rgba(255,255,255,.02),0 0 0 140px rgba(255,255,255,.015); animation: rotate 38s linear infinite; }
+  .final-cta { min-height: 78vh; display: grid; place-items: center; overflow: hidden; position: relative; background: #111517; color: #fff; text-align: center; content-visibility: auto; contain-intrinsic-size: auto 760px; }
+  .final-cta::before { content: ''; position: absolute; width: min(86vw,1050px); aspect-ratio: 1; border: 1px solid rgba(255,255,255,.09); border-radius: 50%; box-shadow: 0 0 0 70px rgba(255,255,255,.02),0 0 0 140px rgba(255,255,255,.015); animation: rotate 38s linear infinite; animation-play-state: paused; }
+  .final-cta.is-motion-active::before { animation-play-state: running; }
   .final-cta::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg,transparent 0 49.8%,rgba(244,246,0,.3) 50%,transparent 50.2%),repeating-linear-gradient(90deg,transparent 0 80px,rgba(255,255,255,.025) 81px); }
   .final-cta__inner { position: relative; z-index: 2; padding: 90px 20px; }
   .final-cta__inner small { color: var(--primary); }
   .final-cta h2 { margin: 18px 0 30px; white-space: pre-line; font-size: clamp(48px,8vw,115px); line-height: .84; letter-spacing: -.065em; }
   .final-cta p { max-width: 620px; margin: 0 auto 36px; color: #bfc3c3; }
 
-  .protocol-modal { position: fixed; inset: 0; z-index: 5000; display: grid; place-items: center; opacity: 0; visibility: hidden; background: rgba(0,0,0,.82); backdrop-filter: blur(14px); transition: opacity 350ms,visibility 0s linear 350ms; }
+  .protocol-modal { position: fixed; inset: 0; z-index: 5000; display: grid; place-items: center; opacity: 0; visibility: hidden; background: rgba(0,0,0,.82); backdrop-filter: blur(10px); transition: opacity 350ms,visibility 0s linear 350ms; }
+  .protocol-modal.is-idle { display: none; }
   .protocol-modal.is-open { opacity: 1; visibility: visible; transition-delay: 0s; }
   .protocol-modal__box { width: min(1080px,calc(100vw - 36px)); aspect-ratio: 16/9; overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,.35); background: #111517; color: #fff; clip-path: polygon(0 0,calc(100% - 30px) 0,100% 30px,100% 100%,30px 100%,0 calc(100% - 30px)); }
-  .protocol-modal__visual { position: absolute; inset: 0; background: radial-gradient(circle at 70% 38%,rgba(244,246,0,.6),transparent 5%),repeating-radial-gradient(circle at 70% 38%,transparent 0 42px,rgba(244,246,0,.12) 43px 44px),linear-gradient(135deg,#818b8c,#1c2224 58%,#080a0b); animation: modal-pulse 4s ease-in-out infinite; }
-  .protocol-modal__visual::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg,transparent 0 4px,rgba(255,255,255,.03) 4px 5px); animation: scan-move 5s linear infinite; }
+  .protocol-modal__visual { position: absolute; inset: 0; background: radial-gradient(circle at 70% 38%,rgba(244,246,0,.6),transparent 5%),repeating-radial-gradient(circle at 70% 38%,transparent 0 42px,rgba(244,246,0,.12) 43px 44px),linear-gradient(135deg,#818b8c,#1c2224 58%,#080a0b); animation: modal-pulse 4s ease-in-out infinite; animation-play-state: paused; }
+  .protocol-modal__visual::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg,transparent 0 4px,rgba(255,255,255,.03) 4px 5px); animation: scan-move 5s linear infinite; animation-play-state: paused; }
   .protocol-modal__copy { position: absolute; z-index: 2; inset: 12% 8%; width: 58%; }
   .protocol-modal__copy > .mono { color: var(--primary); font-size: 10px; }
   .protocol-modal__copy h2 { margin: 12px 0 18px; font-size: clamp(38px,5vw,72px); line-height: .92; }
@@ -722,7 +738,8 @@ const portals = [
   .protocol-modal__stats b { color: var(--primary); font-size: 22px; }
   .protocol-modal__links { display: flex; gap: 12px; }
   .protocol-modal__timeline { position: absolute; left: 7%; right: 7%; bottom: 5%; height: 2px; background: rgba(255,255,255,.2); }
-  .protocol-modal__timeline::after { content: ''; display: block; width: 0; height: 100%; background: var(--primary); animation: fake-play 8s linear infinite; }
+  .protocol-modal__timeline::after { content: ''; display: block; width: 0; height: 100%; background: var(--primary); animation: fake-play 8s linear infinite; animation-play-state: paused; }
+  .protocol-modal.is-open .protocol-modal__visual,.protocol-modal.is-open .protocol-modal__visual::before,.protocol-modal.is-open .protocol-modal__timeline::after { animation-play-state: running; }
 
   @keyframes marquee { to { transform: translateX(-50%); } }
   @keyframes scan-move { to { background-position: 0 40px; } }
@@ -731,6 +748,10 @@ const portals = [
   @keyframes boot-glyph { 50% { transform: rotate(45deg) scale(.86); } }
   @keyframes modal-pulse { 50% { filter: brightness(1.2) contrast(1.08); transform: scale(1.03); } }
   @keyframes fake-play { to { width: 100%; } }
+
+  @media (min-width: 821px) {
+    .world.is-motion-active .world__track { will-change: transform; }
+  }
 
   @media (max-width: 1100px) {
     .news-grid { grid-template-columns: 1fr 1fr; }
@@ -839,12 +860,14 @@ const portals = [
             root.dataset.homeBoot = 'done';
             try { sessionStorage.setItem('sb-home-booted', '1'); } catch (_) {}
             revealInitial();
+            setTimeout(() => boot.remove(), 720);
           }, 320);
         }
       };
       setTimeout(tick, 180);
     } else {
       root.dataset.homeBoot = 'skip';
+      boot?.remove();
       revealInitial();
     }
 
@@ -864,6 +887,29 @@ const portals = [
       });
     }
 
+    const heroSection = home.querySelector<HTMLElement>('.hero');
+    const ticker = home.querySelector<HTMLElement>('.ticker');
+    const world = document.getElementById('home-world');
+    const finalCta = home.querySelector<HTMLElement>('.final-cta');
+    const worldTrack = document.getElementById('worldTrack') as HTMLElement | null;
+    const worldProgress = document.getElementById('worldProgress') as HTMLElement | null;
+    let heroVisible = true;
+    let radarVisible = false;
+    let worldVisible = false;
+
+    const motionObserver = !reduced && 'IntersectionObserver' in window
+      ? new IntersectionObserver((entries) => entries.forEach((entry) => {
+          const element = entry.target as HTMLElement;
+          element.classList.toggle('is-motion-active', entry.isIntersecting);
+          if (element === world) worldVisible = entry.isIntersecting;
+        }), { rootMargin: '160px 0px', threshold: 0 })
+      : null;
+    [heroSection, ticker, world, finalCta].forEach((element) => {
+      if (!element) return;
+      if (motionObserver) motionObserver.observe(element);
+      else element.classList.add('is-motion-active');
+    });
+
     const pointerFine = matchMedia('(hover: hover) and (pointer: fine)').matches;
     const dot = document.getElementById('homeCursorDot') as HTMLElement | null;
     const ring = document.getElementById('homeCursorRing') as HTMLElement | null;
@@ -871,53 +917,74 @@ const portals = [
     let pointerY = innerHeight / 2;
     let ringX = pointerX;
     let ringY = pointerY;
+    let cursorRaf: number | null = null;
+    const drawCursor = () => {
+      cursorRaf = null;
+      if (!ring || document.hidden) return;
+      ringX += (pointerX - ringX) * 0.18;
+      ringY += (pointerY - ringY) * 0.18;
+      ring.style.transform = `translate3d(${ringX}px,${ringY}px,0) translate(-50%,-50%)`;
+      if (Math.abs(pointerX - ringX) > 0.15 || Math.abs(pointerY - ringY) > 0.15) {
+        cursorRaf = requestAnimationFrame(drawCursor);
+      }
+    };
+    const scheduleCursor = () => {
+      if (cursorRaf === null && !document.hidden) cursorRaf = requestAnimationFrame(drawCursor);
+    };
     if (pointerFine && !reduced && dot && ring) {
       addEventListener('pointermove', (event) => {
         pointerX = event.clientX;
         pointerY = event.clientY;
-        root.style.setProperty('--mx', (((event.clientX / innerWidth) - 0.5)).toFixed(3));
-        root.style.setProperty('--my', (((event.clientY / innerHeight) - 0.5)).toFixed(3));
-        dot.style.left = `${pointerX}px`;
-        dot.style.top = `${pointerY}px`;
+        const mx = (((event.clientX / innerWidth) - 0.5)).toFixed(3);
+        const my = (((event.clientY / innerHeight) - 0.5)).toFixed(3);
+        if (heroVisible) {
+          heroSection?.style.setProperty('--mx', mx);
+          heroSection?.style.setProperty('--my', my);
+        }
+        if (worldVisible) {
+          world?.style.setProperty('--mx', mx);
+          world?.style.setProperty('--my', my);
+        }
+        dot.style.transform = `translate3d(${pointerX}px,${pointerY}px,0) translate(-50%,-50%)`;
+        scheduleCursor();
       }, { passive: true });
-      const cursorLoop = () => {
-        ringX += (pointerX - ringX) * 0.14;
-        ringY += (pointerY - ringY) * 0.14;
-        ring.style.left = `${ringX}px`;
-        ring.style.top = `${ringY}px`;
-        requestAnimationFrame(cursorLoop);
-      };
-      cursorLoop();
       home.querySelectorAll('a,button,.interactive').forEach((element) => {
         element.addEventListener('mouseenter', () => ring.classList.add('is-active'));
         element.addEventListener('mouseleave', () => ring.classList.remove('is-active'));
       });
     }
 
-    const world = document.getElementById('home-world');
-    const worldTrack = document.getElementById('worldTrack') as HTMLElement | null;
-    const worldProgress = document.getElementById('worldProgress') as HTMLElement | null;
     const updateWorld = () => {
-      root.style.setProperty('--scroll', scrollY.toFixed(1));
+      if (heroVisible) heroSection?.style.setProperty('--scroll', Math.min(scrollY, innerHeight * 1.5).toFixed(1));
       if (!world || !worldTrack || !worldProgress || innerWidth <= 820 || reduced) {
         if (worldTrack) worldTrack.style.transform = 'none';
+        if (worldProgress) worldProgress.style.transform = 'scaleX(0)';
         return;
       }
       const rect = world.getBoundingClientRect();
       const available = world.offsetHeight - innerHeight;
       const progress = Math.min(1, Math.max(0, -rect.top / available));
       worldTrack.style.transform = `translate3d(${-progress * 200}vw,0,0)`;
-      worldProgress.style.width = `${progress * 100}%`;
+      worldProgress.style.transform = `scaleX(${progress})`;
     };
-    addEventListener('scroll', updateWorld, { passive: true });
-    addEventListener('resize', updateWorld, { passive: true });
+    let scrollRaf: number | null = null;
+    const scheduleScrollUpdate = () => {
+      if (scrollRaf !== null) return;
+      scrollRaf = requestAnimationFrame(() => {
+        scrollRaf = null;
+        updateWorld();
+      });
+    };
+    addEventListener('scroll', scheduleScrollUpdate, { passive: true });
+    addEventListener('resize', scheduleScrollUpdate, { passive: true });
     updateWorld();
 
     const counters = home.querySelectorAll<HTMLElement>('.counter');
+    let counterObserver: IntersectionObserver | null = null;
     if (reduced || !('IntersectionObserver' in window)) {
       counters.forEach((counter) => { counter.textContent = counter.dataset.value || '0'; });
     } else {
-      const counterObserver = new IntersectionObserver((entries) => entries.forEach((entry) => {
+      counterObserver = new IntersectionObserver((entries) => entries.forEach((entry) => {
         if (!entry.isIntersecting) return;
         const element = entry.target as HTMLElement;
         const target = Number(element.dataset.value || 0);
@@ -928,77 +995,137 @@ const portals = [
           if (progress < 1) requestAnimationFrame(animate);
         };
         requestAnimationFrame(animate);
-        counterObserver.unobserve(element);
+        counterObserver?.unobserve(element);
       }), { threshold: 0.5 });
-      counters.forEach((counter) => counterObserver.observe(counter));
+      counters.forEach((counter) => counterObserver?.observe(counter));
     }
 
+    const fitCanvas = (
+      canvas: HTMLCanvasElement,
+      context: CanvasRenderingContext2D,
+      maxPixels: number,
+    ) => {
+      const logicalWidth = Math.max(1, Math.round(canvas.clientWidth));
+      const logicalHeight = Math.max(1, Math.round(canvas.clientHeight));
+      const requestedScale = Math.min(devicePixelRatio || 1, 1.5);
+      const pixelScale = Math.sqrt(maxPixels / (logicalWidth * logicalHeight));
+      const scale = Math.min(requestedScale, pixelScale);
+      const targetWidth = Math.max(1, Math.round(logicalWidth * scale));
+      const targetHeight = Math.max(1, Math.round(logicalHeight * scale));
+      const changed = canvas.width !== targetWidth || canvas.height !== targetHeight;
+      if (changed) {
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        context.setTransform(scale, 0, 0, scale, 0, 0);
+      }
+      canvas.dataset.bufferPixels = String(targetWidth * targetHeight);
+      return { logicalWidth, logicalHeight, changed };
+    };
+
     const heroCanvas = document.getElementById('heroCanvas') as HTMLCanvasElement | null;
-    const heroContext = heroCanvas?.getContext('2d');
+    const heroContext = heroCanvas?.getContext('2d', { desynchronized: true });
     let heroWidth = 0;
     let heroHeight = 0;
-    let heroVisible = true;
+    let heroRaf: number | null = null;
+    let heroResizeRaf: number | null = null;
+    let lastHeroFrame = 0;
     let particles: Array<{ x: number; y: number; vx: number; vy: number; r: number }> = [];
     const resizeHero = () => {
+      heroResizeRaf = null;
       if (!heroCanvas || !heroContext) return;
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      heroWidth = heroCanvas.clientWidth;
-      heroHeight = heroCanvas.clientHeight;
-      heroCanvas.width = heroWidth * dpr;
-      heroCanvas.height = heroHeight * dpr;
-      heroContext.setTransform(dpr, 0, 0, dpr, 0, 0);
-      particles = Array.from({ length: Math.min(80, Math.floor(heroWidth / 18)) }, () => ({
-        x: Math.random() * heroWidth,
-        y: Math.random() * heroHeight,
-        vx: (Math.random() - 0.5) * 0.15,
-        vy: (Math.random() - 0.5) * 0.15,
-        r: Math.random() * 1.4 + 0.35,
-      }));
-    };
-    const drawHero = () => {
-      if (!heroContext || !heroCanvas || reduced) return;
-      heroContext.clearRect(0, 0, heroWidth, heroHeight);
-      if (heroVisible && !document.hidden) {
-        heroContext.strokeStyle = 'rgba(244,246,0,.12)';
-        heroContext.lineWidth = 0.65;
-        particles.forEach((particle, index) => {
-          particle.x += particle.vx;
-          particle.y += particle.vy;
-          if (particle.x < 0 || particle.x > heroWidth) particle.vx *= -1;
-          if (particle.y < 0 || particle.y > heroHeight) particle.vy *= -1;
-          heroContext.fillStyle = 'rgba(244,246,0,.42)';
-          heroContext.beginPath();
-          heroContext.arc(particle.x, particle.y, particle.r, 0, Math.PI * 2);
-          heroContext.fill();
-          for (let next = index + 1; next < particles.length; next += 1) {
-            const other = particles[next];
-            const distance = Math.hypot(particle.x - other.x, particle.y - other.y);
-            if (distance < 115) {
-              heroContext.globalAlpha = (1 - distance / 115) * 0.45;
-              heroContext.beginPath();
-              heroContext.moveTo(particle.x, particle.y);
-              heroContext.lineTo(other.x, other.y);
-              heroContext.stroke();
-              heroContext.globalAlpha = 1;
-            }
-          }
-        });
+      const fitted = fitCanvas(heroCanvas, heroContext, 2_000_000);
+      heroWidth = fitted.logicalWidth;
+      heroHeight = fitted.logicalHeight;
+      if (fitted.changed || particles.length === 0) {
+        particles = Array.from({ length: Math.min(56, Math.floor(heroWidth / 24)) }, () => ({
+          x: Math.random() * heroWidth,
+          y: Math.random() * heroHeight,
+          vx: (Math.random() - 0.5) * 0.15,
+          vy: (Math.random() - 0.5) * 0.15,
+          r: Math.random() * 1.4 + 0.35,
+        }));
       }
-      requestAnimationFrame(drawHero);
     };
+    const scheduleHeroResize = () => {
+      if (heroResizeRaf === null) heroResizeRaf = requestAnimationFrame(resizeHero);
+    };
+    const heroShouldRun = () => Boolean(heroContext && heroCanvas && heroVisible && !document.hidden && !reduced);
+    const drawHero = (stamp: number) => {
+      heroRaf = null;
+      if (!heroContext || !heroCanvas || !heroShouldRun()) return;
+      if (lastHeroFrame && stamp - lastHeroFrame < 32) {
+        heroRaf = requestAnimationFrame(drawHero);
+        return;
+      }
+      const step = lastHeroFrame ? Math.min(2.5, (stamp - lastHeroFrame) / 16.67) : 1;
+      lastHeroFrame = stamp;
+      heroContext.clearRect(0, 0, heroWidth, heroHeight);
+      heroContext.strokeStyle = 'rgba(244,246,0,.12)';
+      heroContext.lineWidth = 0.65;
+      particles.forEach((particle, index) => {
+        particle.x += particle.vx * step;
+        particle.y += particle.vy * step;
+        if (particle.x < 0 || particle.x > heroWidth) particle.vx *= -1;
+        if (particle.y < 0 || particle.y > heroHeight) particle.vy *= -1;
+        heroContext.fillStyle = 'rgba(244,246,0,.42)';
+        heroContext.beginPath();
+        heroContext.arc(particle.x, particle.y, particle.r, 0, Math.PI * 2);
+        heroContext.fill();
+        for (let next = index + 1; next < particles.length; next += 1) {
+          const other = particles[next];
+          const distance = Math.hypot(particle.x - other.x, particle.y - other.y);
+          if (distance < 115) {
+            heroContext.globalAlpha = (1 - distance / 115) * 0.45;
+            heroContext.beginPath();
+            heroContext.moveTo(particle.x, particle.y);
+            heroContext.lineTo(other.x, other.y);
+            heroContext.stroke();
+            heroContext.globalAlpha = 1;
+          }
+        }
+      });
+      heroRaf = requestAnimationFrame(drawHero);
+    };
+    const syncHeroLoop = () => {
+      if (heroShouldRun()) {
+        if (heroCanvas) heroCanvas.dataset.rendering = 'true';
+        if (heroRaf === null) {
+          lastHeroFrame = 0;
+          heroRaf = requestAnimationFrame(drawHero);
+        }
+      } else if (heroRaf !== null) {
+        cancelAnimationFrame(heroRaf);
+        heroRaf = null;
+        if (heroCanvas) heroCanvas.dataset.rendering = 'false';
+      } else if (heroCanvas) {
+        heroCanvas.dataset.rendering = 'false';
+      }
+    };
+    const heroObserver = heroCanvas && !reduced
+      ? new IntersectionObserver(([entry]) => {
+          heroVisible = entry.isIntersecting;
+          if (heroVisible) resizeHero();
+          syncHeroLoop();
+        }, { rootMargin: '160px 0px', threshold: 0 })
+      : null;
+    const heroResizeObserver = heroCanvas && 'ResizeObserver' in window
+      ? new ResizeObserver(scheduleHeroResize)
+      : null;
     if (heroCanvas && heroContext && !reduced) {
       resizeHero();
-      drawHero();
-      addEventListener('resize', resizeHero, { passive: true });
-      new IntersectionObserver(([entry]) => { heroVisible = entry.isIntersecting; }).observe(heroCanvas);
+      heroObserver?.observe(heroCanvas);
+      heroResizeObserver?.observe(heroCanvas);
+      syncHeroLoop();
     }
 
     const radarCanvas = document.getElementById('radarCanvas') as HTMLCanvasElement | null;
-    const radarContext = radarCanvas?.getContext('2d');
+    const radarContext = radarCanvas?.getContext('2d', { alpha: false, desynchronized: true });
     let radarWidth = 0;
     let radarHeight = 0;
     let radarMode = 'network';
-    let radarVisible = true;
+    let radarRaf: number | null = null;
+    let radarResizeRaf: number | null = null;
+    let lastRadarFrame = 0;
     const radarNodes = Array.from({ length: 16 }, (_, index) => ({
       angle: Math.random() * Math.PI * 2,
       radius: 0.12 + Math.random() * 0.35,
@@ -1006,95 +1133,135 @@ const portals = [
       phase: index % 3,
     }));
     const resizeRadar = () => {
-      if (!radarCanvas || !radarContext) return;
-      const dpr = Math.min(devicePixelRatio || 1, 2);
-      radarWidth = radarCanvas.clientWidth;
-      radarHeight = radarCanvas.clientHeight;
-      radarCanvas.width = radarWidth * dpr;
-      radarCanvas.height = radarHeight * dpr;
-      radarContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+      radarResizeRaf = null;
+      if (!radarCanvas || !radarContext || !radarVisible) return;
+      const fitted = fitCanvas(radarCanvas, radarContext, 750_000);
+      radarWidth = fitted.logicalWidth;
+      radarHeight = fitted.logicalHeight;
     };
-    const drawRadar = (stamp = 0) => {
-      if (!radarCanvas || !radarContext || reduced) return;
+    const scheduleRadarResize = () => {
+      if (radarResizeRaf === null && radarVisible) radarResizeRaf = requestAnimationFrame(resizeRadar);
+    };
+    const radarShouldRun = () => Boolean(radarCanvas && radarContext && radarVisible && !document.hidden && !reduced);
+    const drawRadar = (stamp: number) => {
+      radarRaf = null;
+      if (!radarCanvas || !radarContext || !radarShouldRun()) return;
+      if (lastRadarFrame && stamp - lastRadarFrame < 32) {
+        radarRaf = requestAnimationFrame(drawRadar);
+        return;
+      }
+      lastRadarFrame = stamp;
       const time = stamp * 0.0003;
       radarContext.clearRect(0, 0, radarWidth, radarHeight);
       radarContext.fillStyle = '#151a1c';
       radarContext.fillRect(0, 0, radarWidth, radarHeight);
-      if (radarVisible && !document.hidden) {
-        const centerX = radarWidth * 0.5;
-        const centerY = radarHeight * 0.5;
-        const radius = Math.min(radarWidth, radarHeight) * 0.37;
-        radarContext.strokeStyle = 'rgba(255,255,255,.1)';
-        radarContext.lineWidth = 1;
-        for (let ringIndex = 1; ringIndex <= 5; ringIndex += 1) {
-          radarContext.beginPath();
-          radarContext.arc(centerX, centerY, radius * ringIndex / 5, 0, Math.PI * 2);
-          radarContext.stroke();
-        }
-        for (let ray = 0; ray < 12; ray += 1) {
-          const angle = ray * Math.PI / 6;
-          radarContext.beginPath();
-          radarContext.moveTo(centerX, centerY);
-          radarContext.lineTo(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius);
-          radarContext.stroke();
-        }
-        const sweep = time % (Math.PI * 2);
-        const gradient = radarContext.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-        gradient.addColorStop(0, 'rgba(244,246,0,.18)');
-        gradient.addColorStop(1, 'rgba(244,246,0,0)');
-        radarContext.save();
-        radarContext.translate(centerX, centerY);
-        radarContext.rotate(sweep);
+      const centerX = radarWidth * 0.5;
+      const centerY = radarHeight * 0.5;
+      const radius = Math.min(radarWidth, radarHeight) * 0.37;
+      radarContext.strokeStyle = 'rgba(255,255,255,.1)';
+      radarContext.lineWidth = 1;
+      for (let ringIndex = 1; ringIndex <= 5; ringIndex += 1) {
         radarContext.beginPath();
-        radarContext.moveTo(0, 0);
-        radarContext.arc(0, 0, radius, -0.18, 0);
-        radarContext.closePath();
-        radarContext.fillStyle = gradient;
-        radarContext.fill();
-        radarContext.strokeStyle = 'rgba(244,246,0,.72)';
-        radarContext.beginPath();
-        radarContext.moveTo(0, 0);
-        radarContext.lineTo(radius, 0);
+        radarContext.arc(centerX, centerY, radius * ringIndex / 5, 0, Math.PI * 2);
         radarContext.stroke();
-        radarContext.restore();
-        const points = radarNodes.map((node) => ({
-          x: centerX + Math.cos(node.angle + time * node.speed) * radius * node.radius * 2,
-          y: centerY + Math.sin(node.angle + time * node.speed) * radius * node.radius * 2,
-          phase: node.phase,
-        }));
-        if (radarMode !== 'scan') {
-          radarContext.strokeStyle = radarMode === 'taxonomy' ? 'rgba(255,255,255,.18)' : 'rgba(244,246,0,.18)';
-          for (let from = 0; from < points.length; from += 1) for (let to = from + 1; to < points.length; to += 1) {
-            const distance = Math.hypot(points[from].x - points[to].x, points[from].y - points[to].y);
-            const threshold = radarMode === 'taxonomy' ? 160 : 120;
-            if (distance < threshold) {
-              radarContext.globalAlpha = 1 - distance / 180;
-              radarContext.beginPath();
-              radarContext.moveTo(points[from].x, points[from].y);
-              radarContext.lineTo(points[to].x, points[to].y);
-              radarContext.stroke();
-            }
-          }
-          radarContext.globalAlpha = 1;
-        }
-        points.forEach((point, index) => {
-          const active = Math.abs(Math.atan2(point.y - centerY, point.x - centerX) - sweep) < 0.08;
-          radarContext.fillStyle = active || index % 4 === 0 ? '#f4f600' : 'rgba(255,255,255,.6)';
-          radarContext.fillRect(point.x - 2, point.y - 2, active ? 7 : 4, active ? 7 : 4);
-        });
-        radarContext.fillStyle = 'rgba(255,255,255,.55)';
-        radarContext.font = '10px monospace';
-        radarContext.fillText(`SALTEDBLOG / ${radarMode.toUpperCase()}`, 28, 38);
-        radarContext.fillText(`SIGNAL ${String(Math.floor((Math.sin(time) * 0.5 + 0.5) * 99)).padStart(2, '0')}%`, 28, radarHeight - 30);
       }
-      requestAnimationFrame(drawRadar);
+      for (let ray = 0; ray < 12; ray += 1) {
+        const angle = ray * Math.PI / 6;
+        radarContext.beginPath();
+        radarContext.moveTo(centerX, centerY);
+        radarContext.lineTo(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius);
+        radarContext.stroke();
+      }
+      const sweep = time % (Math.PI * 2);
+      const gradient = radarContext.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+      gradient.addColorStop(0, 'rgba(244,246,0,.18)');
+      gradient.addColorStop(1, 'rgba(244,246,0,0)');
+      radarContext.save();
+      radarContext.translate(centerX, centerY);
+      radarContext.rotate(sweep);
+      radarContext.beginPath();
+      radarContext.moveTo(0, 0);
+      radarContext.arc(0, 0, radius, -0.18, 0);
+      radarContext.closePath();
+      radarContext.fillStyle = gradient;
+      radarContext.fill();
+      radarContext.strokeStyle = 'rgba(244,246,0,.72)';
+      radarContext.beginPath();
+      radarContext.moveTo(0, 0);
+      radarContext.lineTo(radius, 0);
+      radarContext.stroke();
+      radarContext.restore();
+      const points = radarNodes.map((node) => ({
+        x: centerX + Math.cos(node.angle + time * node.speed) * radius * node.radius * 2,
+        y: centerY + Math.sin(node.angle + time * node.speed) * radius * node.radius * 2,
+        phase: node.phase,
+      }));
+      if (radarMode !== 'scan') {
+        radarContext.strokeStyle = radarMode === 'taxonomy' ? 'rgba(255,255,255,.18)' : 'rgba(244,246,0,.18)';
+        for (let from = 0; from < points.length; from += 1) for (let to = from + 1; to < points.length; to += 1) {
+          const distance = Math.hypot(points[from].x - points[to].x, points[from].y - points[to].y);
+          const threshold = radarMode === 'taxonomy' ? 160 : 120;
+          if (distance < threshold) {
+            radarContext.globalAlpha = 1 - distance / 180;
+            radarContext.beginPath();
+            radarContext.moveTo(points[from].x, points[from].y);
+            radarContext.lineTo(points[to].x, points[to].y);
+            radarContext.stroke();
+          }
+        }
+        radarContext.globalAlpha = 1;
+      }
+      points.forEach((point, index) => {
+        const active = Math.abs(Math.atan2(point.y - centerY, point.x - centerX) - sweep) < 0.08;
+        radarContext.fillStyle = active || index % 4 === 0 ? '#f4f600' : 'rgba(255,255,255,.6)';
+        radarContext.fillRect(point.x - 2, point.y - 2, active ? 7 : 4, active ? 7 : 4);
+      });
+      radarContext.fillStyle = 'rgba(255,255,255,.55)';
+      radarContext.font = '10px monospace';
+      radarContext.fillText(`SALTEDBLOG / ${radarMode.toUpperCase()}`, 28, 38);
+      radarContext.fillText(`SIGNAL ${String(Math.floor((Math.sin(time) * 0.5 + 0.5) * 99)).padStart(2, '0')}%`, 28, radarHeight - 30);
+      radarRaf = requestAnimationFrame(drawRadar);
     };
+    const syncRadarLoop = () => {
+      if (radarShouldRun()) {
+        if (radarCanvas) radarCanvas.dataset.rendering = 'true';
+        if (radarRaf === null) {
+          lastRadarFrame = 0;
+          radarRaf = requestAnimationFrame(drawRadar);
+        }
+      } else if (radarRaf !== null) {
+        cancelAnimationFrame(radarRaf);
+        radarRaf = null;
+        if (radarCanvas) radarCanvas.dataset.rendering = 'false';
+      } else if (radarCanvas) {
+        radarCanvas.dataset.rendering = 'false';
+      }
+    };
+    const radarObserver = radarCanvas && !reduced
+      ? new IntersectionObserver(([entry]) => {
+          radarVisible = entry.isIntersecting;
+          if (radarVisible) resizeRadar();
+          syncRadarLoop();
+        }, { rootMargin: '160px 0px', threshold: 0 })
+      : null;
+    const radarResizeObserver = radarCanvas && 'ResizeObserver' in window
+      ? new ResizeObserver(scheduleRadarResize)
+      : null;
     if (radarCanvas && radarContext && !reduced) {
-      resizeRadar();
-      requestAnimationFrame(drawRadar);
-      addEventListener('resize', resizeRadar, { passive: true });
-      new IntersectionObserver(([entry]) => { radarVisible = entry.isIntersecting; }).observe(radarCanvas);
+      radarObserver?.observe(radarCanvas);
+      radarResizeObserver?.observe(radarCanvas);
     }
+
+    const handleVisibilityChange = () => {
+      home.classList.toggle('is-page-hidden', document.hidden);
+      if (document.hidden && cursorRaf !== null) {
+        cancelAnimationFrame(cursorRaf);
+        cursorRaf = null;
+      }
+      syncHeroLoop();
+      syncRadarLoop();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const systemAction = document.getElementById('systemAction') as HTMLAnchorElement | null;
     home.querySelectorAll<HTMLButtonElement>('.system-tab').forEach((tab) => tab.addEventListener('click', () => {
@@ -1138,20 +1305,32 @@ const portals = [
     const modal = document.getElementById('protocolModal');
     const modalClose = document.getElementById('protocolClose') as HTMLButtonElement | null;
     let modalOpener: HTMLElement | null = null;
+    let modalIdleTimer: number | null = null;
     const modalFocusables = () => Array.from(modal?.querySelectorAll<HTMLElement>('button,a[href]') || []);
     const openModal = (opener: HTMLElement) => {
       if (!modal) return;
+      if (modalIdleTimer !== null) {
+        clearTimeout(modalIdleTimer);
+        modalIdleTimer = null;
+      }
       modalOpener = opener;
-      modal.classList.add('is-open');
+      modal.classList.remove('is-idle');
       modal.setAttribute('aria-hidden', 'false');
       body.classList.add('is-locked');
-      requestAnimationFrame(() => modalClose?.focus({ preventScroll: true }));
+      requestAnimationFrame(() => {
+        modal.classList.add('is-open');
+        requestAnimationFrame(() => modalClose?.focus({ preventScroll: true }));
+      });
     };
     const closeModal = () => {
       if (!modal?.classList.contains('is-open')) return;
       modal.classList.remove('is-open');
       modal.setAttribute('aria-hidden', 'true');
       body.classList.remove('is-locked');
+      modalIdleTimer = window.setTimeout(() => {
+        modal.classList.add('is-idle');
+        modalIdleTimer = null;
+      }, 360);
       modalOpener?.focus();
     };
     home.querySelectorAll<HTMLElement>('[data-open-protocol]').forEach((button) => button.addEventListener('click', () => openModal(button)));
@@ -1167,8 +1346,20 @@ const portals = [
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     });
-    modal?.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => {
-      body.classList.remove('is-locked');
-    }));
+    modal?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeModal));
+
+    addEventListener('pagehide', () => {
+      [cursorRaf, scrollRaf, heroRaf, heroResizeRaf, radarRaf, radarResizeRaf].forEach((id) => {
+        if (id !== null) cancelAnimationFrame(id);
+      });
+      if (modalIdleTimer !== null) clearTimeout(modalIdleTimer);
+      motionObserver?.disconnect();
+      counterObserver?.disconnect();
+      heroObserver?.disconnect();
+      heroResizeObserver?.disconnect();
+      radarObserver?.disconnect();
+      radarResizeObserver?.disconnect();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, { once: true });
   })();
 </script>

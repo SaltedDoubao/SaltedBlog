@@ -118,8 +118,8 @@ const langLabel = lang === 'zh' ? 'EN' : '中';
     color: #fff;
     border-color: rgba(255, 255, 255, 0.18);
     background: rgba(11, 13, 15, 0.18);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
     transition:
       color 300ms var(--ease),
       background 300ms var(--ease),
@@ -132,8 +132,8 @@ const langLabel = lang === 'zh' ? 'EN' : '中';
     color: var(--text);
     border-color: var(--border-subtle);
     background: color-mix(in srgb, var(--bg) 91%, transparent);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     box-shadow: 0 8px 28px rgba(11, 13, 15, 0.08);
   }
 
@@ -399,11 +399,19 @@ const langLabel = lang === 'zh' ? 'EN' : '中';
   // 首页页头覆盖首屏，并在越过首屏主体后切换为主题表面色。
   const siteHeader = document.getElementById('siteHeader');
   if (siteHeader?.dataset.variant === 'home') {
+    let headerRaf: number | null = null;
     const updateHomeHeader = () => {
+      headerRaf = null;
       siteHeader.classList.toggle('is-scrolled', scrollY > innerHeight * 0.68);
     };
-    addEventListener('scroll', updateHomeHeader, { passive: true });
-    addEventListener('resize', updateHomeHeader, { passive: true });
+    const scheduleHomeHeader = () => {
+      if (headerRaf === null) headerRaf = requestAnimationFrame(updateHomeHeader);
+    };
+    addEventListener('scroll', scheduleHomeHeader, { passive: true });
+    addEventListener('resize', scheduleHomeHeader, { passive: true });
+    addEventListener('pagehide', () => {
+      if (headerRaf !== null) cancelAnimationFrame(headerRaf);
+    }, { once: true });
     updateHomeHeader();
   }
 </script>
