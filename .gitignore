@@ -5,6 +5,14 @@
 data/
 backups/
 
+# backup / restore temporary artifacts (if created outside backups/)
+**/.work_*/
+**/.restore_*/
+**/.upload_*.zip
+**/*.partial
+**/*.restoring
+**/*.pre_restore
+
 # env
 .env
 *.env.local
