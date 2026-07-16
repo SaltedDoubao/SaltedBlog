@@ -7,7 +7,7 @@ import '@/styles/admin.css';
 interface Props {
   title: string;
   eyebrow?: string;
-  active: 'dashboard' | 'posts' | 'terms' | 'friends' | 'settings' | 'uploads';
+  active: 'dashboard' | 'posts' | 'terms' | 'friends' | 'settings' | 'uploads' | 'backup';
 }
 
 const { title, eyebrow = 'ADMIN CONSOLE', active } = Astro.props;
@@ -22,6 +22,7 @@ const navItems = [
   { id: 'friends', href: '/admin/friends', label: '友情链接', index: '04' },
   { id: 'uploads', href: '/admin/uploads', label: '图片素材', index: '05' },
   { id: 'settings', href: '/admin/settings', label: '站点设置', index: '06' },
+  { id: 'backup', href: '/admin/backup', label: '备份管理', index: '07' },
 ] as const;
 ---
 

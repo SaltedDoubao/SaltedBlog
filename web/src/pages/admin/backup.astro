@@ -1,0 +1,275 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="备份管理" eyebrow="BACKUP / MANAGE" active="backup">
+  <div slot="actions" class="backup-actions">
+    <button class="btn btn--primary btn--sm" id="createBtn" type="button">生成备份</button>
+    <button class="btn btn--sm" id="uploadBtn" type="button">上传备份</button>
+    <input id="uploadInput" type="file" accept=".zip,application/zip" hidden />
+  </div>
+
+  <div class="admin-panel">
+    <div class="backup-status" id="jobStatus" hidden>
+      <span class="mono" id="jobStatusText">任务进行中…</span>
+    </div>
+    <p class="backup-hint">
+      备份包含当前数据库与全部上传图片，保存为 zip。恢复将覆盖现网数据，并会先自动生成一份安全备份。SQLite
+      与 PostgreSQL 备份互不转换。
+    </p>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>文件名</th>
+          <th style="width:100px">引擎</th>
+          <th style="width:110px">大小</th>
+          <th style="width:180px">创建时间</th>
+          <th style="width:220px">操作</th>
+        </tr>
+      </thead>
+      <tbody id="backupBody">
+        <tr><td colspan="5" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</AdminLayout>
+
+<style>
+  .backup-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .backup-hint {
+    margin: 0 0 16px;
+    color: var(--text-3);
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+  .backup-status {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 2px solid var(--border);
+    background: var(--bg-2, transparent);
+  }
+  .backup-status[data-kind='error'] {
+    border-color: var(--danger, #c44);
+    color: var(--danger, #c44);
+  }
+  .backup-status[data-kind='ok'] {
+    border-color: var(--accent, #f4f600);
+  }
+</style>
+
+<script>
+  import { adminFetch, confirmDanger, escapeHtml, toast } from '@/lib/admin-client';
+
+  interface BackupItem {
+    name: string;
+    size_bytes: number;
+    created_at: string;
+    engine: string | null;
+  }
+
+  interface JobStatus {
+    status: string;
+    error?: string | null;
+    backup_name?: string | null;
+  }
+
+  const tbody = document.getElementById('backupBody')!;
+  const createBtn = document.getElementById('createBtn') as HTMLButtonElement;
+  const uploadBtn = document.getElementById('uploadBtn') as HTMLButtonElement;
+  const uploadInput = document.getElementById('uploadInput') as HTMLInputElement;
+  const jobStatus = document.getElementById('jobStatus')!;
+  const jobStatusText = document.getElementById('jobStatusText')!;
+
+  let busy = false;
+
+  function setBusy(next: boolean) {
+    busy = next;
+    createBtn.disabled = next;
+    uploadBtn.disabled = next;
+    tbody.querySelectorAll<HTMLButtonElement>('button').forEach((b) => {
+      b.disabled = next;
+    });
+  }
+
+  function showStatus(text: string, kind?: 'ok' | 'error') {
+    jobStatus.hidden = false;
+    jobStatusText.textContent = text;
+    if (kind) jobStatus.dataset.kind = kind;
+    else delete jobStatus.dataset.kind;
+  }
+
+  function hideStatus() {
+    jobStatus.hidden = true;
+  }
+
+  function formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function formatTime(iso: string): string {
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return iso;
+      return d.toLocaleString('zh-CN', { hour12: false });
+    } catch {
+      return iso;
+    }
+  }
+
+  async function load() {
+    try {
+      const res = await adminFetch<{ items: BackupItem[] }>('/api/admin/backups');
+      const items = res.items;
+      if (items.length === 0) {
+        tbody.innerHTML =
+          '<tr><td colspan="5" style="text-align:center;color:var(--text-3)">暂无备份</td></tr>';
+        return;
+      }
+      tbody.innerHTML = items
+        .map(
+          (row) => `
+          <tr>
+            <td class="mono" style="word-break:break-all">${escapeHtml(row.name)}</td>
+            <td class="mono">${escapeHtml(row.engine ?? '—')}</td>
+            <td class="mono">${formatSize(row.size_bytes)}</td>
+            <td class="mono">${escapeHtml(formatTime(row.created_at))}</td>
+            <td>
+              <div class="cell-actions">
+                <a class="btn btn--sm" href="/api/admin/backups/${encodeURIComponent(row.name)}/download">下载</a>
+                <button class="btn btn--sm" data-restore="${encodeURIComponent(row.name)}" type="button">恢复</button>
+                <button class="btn btn--sm btn--danger" data-del="${encodeURIComponent(row.name)}" type="button">删除</button>
+              </div>
+            </td>
+          </tr>`
+        )
+        .join('');
+
+      tbody.querySelectorAll<HTMLButtonElement>('[data-restore]').forEach((btn) =>
+        btn.addEventListener('click', () => onRestore(decodeURIComponent(btn.dataset.restore!)))
+      );
+      tbody.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((btn) =>
+        btn.addEventListener('click', () => onDelete(decodeURIComponent(btn.dataset.del!)))
+      );
+      if (busy) setBusy(true);
+    } catch (err) {
+      toast(`加载失败：${(err as Error).message}`, 'error');
+    }
+  }
+
+  async function pollJob(jobId: string): Promise<JobStatus> {
+    for (;;) {
+      const job = await adminFetch<JobStatus>(`/api/admin/backups/jobs/${jobId}`);
+      if (job.status === 'done' || job.status === 'error') return job;
+      showStatus(`任务进行中（${job.status}）…`);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+
+  async function onCreate() {
+    if (busy) return;
+    setBusy(true);
+    showStatus('正在生成备份…');
+    try {
+      const { job_id } = await adminFetch<{ job_id: string }>('/api/admin/backups', {
+        method: 'POST',
+      });
+      const job = await pollJob(job_id);
+      if (job.status === 'error') {
+        showStatus(`备份失败：${job.error ?? 'unknown'}`, 'error');
+        toast(`备份失败：${job.error ?? 'unknown'}`, 'error');
+      } else {
+        showStatus(`备份完成：${job.backup_name ?? ''}`, 'ok');
+        toast('备份已生成');
+        await load();
+      }
+    } catch (err) {
+      showStatus(`备份失败：${(err as Error).message}`, 'error');
+      toast(`备份失败：${(err as Error).message}`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRestore(name: string) {
+    if (busy) return;
+    if (
+      !confirmDanger(
+        `确认从「${name}」恢复？\n将覆盖当前数据库与全部图片，并会先自动备份当前数据。此操作不可撤销（除安全备份外）。`
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    showStatus('正在恢复（含安全备份）… 请勿关闭页面');
+    try {
+      const { job_id } = await adminFetch<{ job_id: string }>(
+        `/api/admin/backups/${encodeURIComponent(name)}/restore`,
+        { method: 'POST' }
+      );
+      const job = await pollJob(job_id);
+      if (job.status === 'error') {
+        showStatus(`恢复失败：${job.error ?? 'unknown'}`, 'error');
+        toast(`恢复失败：${job.error ?? 'unknown'}`, 'error');
+      } else {
+        showStatus('恢复完成', 'ok');
+        toast('恢复完成');
+        await load();
+      }
+    } catch (err) {
+      showStatus(`恢复失败：${(err as Error).message}`, 'error');
+      toast(`恢复失败：${(err as Error).message}`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDelete(name: string) {
+    if (busy) return;
+    if (!confirmDanger(`确认删除备份「${name}」？`)) return;
+    try {
+      await adminFetch(`/api/admin/backups/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      toast('已删除');
+      await load();
+    } catch (err) {
+      toast(`删除失败：${(err as Error).message}`, 'error');
+    }
+  }
+
+  async function onUpload(file: File) {
+    if (busy) return;
+    setBusy(true);
+    showStatus(`正在上传 ${file.name}…`);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await adminFetch<{ name: string }>('/api/admin/backups/upload', {
+        method: 'POST',
+        body: form,
+      });
+      showStatus(`上传完成：${res.name}`, 'ok');
+      toast('备份已上传');
+      await load();
+    } catch (err) {
+      showStatus(`上传失败：${(err as Error).message}`, 'error');
+      toast(`上传失败：${(err as Error).message}`, 'error');
+    } finally {
+      setBusy(false);
+      uploadInput.value = '';
+    }
+  }
+
+  createBtn.addEventListener('click', () => onCreate());
+  uploadBtn.addEventListener('click', () => uploadInput.click());
+  uploadInput.addEventListener('change', () => {
+    const file = uploadInput.files?.[0];
+    if (file) onUpload(file);
+  });
+
+  load();
+</script>

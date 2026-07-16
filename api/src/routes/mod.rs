@@ -1,3 +1,4 @@
+pub mod admin_backup;
 pub mod admin_misc;
 pub mod admin_posts;
 pub mod admin_taxonomy;
@@ -18,6 +19,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(admin_posts::router())
         .merge(admin_taxonomy::router())
         .merge(admin_misc::router())
+        .merge(admin_backup::router(state.cfg.backup_upload_max_mb))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             crate::auth::require_admin,
@@ -28,7 +30,12 @@ pub fn build_router(state: AppState) -> Router {
         .nest("/auth", auth::router())
         .nest("/admin", admin);
 
-    let max_body = state.cfg.upload_max_mb * 1024 * 1024;
+    let max_body = state
+        .cfg
+        .upload_max_mb
+        .max(state.cfg.backup_upload_max_mb)
+        * 1024
+        * 1024;
 
     Router::new()
         .nest("/api", api)

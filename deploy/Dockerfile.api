@@ -14,7 +14,7 @@ RUN cargo build --release --locked 2>/dev/null || cargo build --release
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && apt-get install -y --no-install-recommends ca-certificates curl postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -22,6 +22,7 @@ COPY --from=builder /build/api/target/release/salted-api /usr/local/bin/salted-a
 
 ENV BIND_ADDR=0.0.0.0:8080 \
     UPLOAD_DIR=/data/uploads \
+    BACKUP_DIR=/data/backups \
     RUST_LOG=info
 
 EXPOSE 8080

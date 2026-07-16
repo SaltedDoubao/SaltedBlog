@@ -1,4 +1,5 @@
 mod auth;
+mod backup;
 mod config;
 mod entities;
 mod error;
@@ -44,6 +45,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     std::fs::create_dir_all(&cfg.upload_dir)?;
+    std::fs::create_dir_all(&cfg.backup_dir)?;
 
     tracing::info!("connecting to database...");
     let db = Database::connect(&cfg.database_url).await?;

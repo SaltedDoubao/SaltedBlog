@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use jieba_rs::Jieba;
 use sea_orm::DatabaseConnection;
+use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -46,6 +47,13 @@ impl LoginLimiter {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct BackupJobStatus {
+    pub status: String,
+    pub error: Option<String>,
+    pub backup_name: Option<String>,
+}
+
 pub struct AppStateInner {
     db_slot: std::sync::RwLock<DatabaseConnection>,
     pub cfg: Config,
@@ -53,6 +61,8 @@ pub struct AppStateInner {
     pub limiter: LoginLimiter,
     /// 统计去重使用的服务端盐（进程启动时随机生成即可满足按日去重）
     pub track_salt: String,
+    pub backup_lock: AsyncMutex<()>,
+    pub backup_jobs: Mutex<HashMap<String, BackupJobStatus>>,
 }
 
 impl AppStateInner {
@@ -63,6 +73,8 @@ impl AppStateInner {
             jieba,
             limiter,
             track_salt: Uuid::new_v4().to_string(),
+            backup_lock: AsyncMutex::new(()),
+            backup_jobs: Mutex::new(HashMap::new()),
         }
     }
 
@@ -72,6 +84,25 @@ impl AppStateInner {
             .read()
             .expect("db lock poisoned")
             .clone()
+    }
+
+    pub fn replace_db(&self, db: DatabaseConnection) {
+        *self.db_slot.write().expect("db lock poisoned") = db;
+    }
+
+    pub fn set_job(&self, id: &str, status: BackupJobStatus) {
+        self.backup_jobs
+            .lock()
+            .expect("backup_jobs lock")
+            .insert(id.to_string(), status);
+    }
+
+    pub fn get_job(&self, id: &str) -> Option<BackupJobStatus> {
+        self.backup_jobs
+            .lock()
+            .expect("backup_jobs lock")
+            .get(id)
+            .cloned()
     }
 }
 

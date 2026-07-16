@@ -25,8 +25,8 @@ Caddy（自动 HTTPS）
 - 评论：Giscus（基于 GitHub Discussions，后台可配置，主题跟随深浅模式）
 - 统计：自建轻量 PV/UV 统计（按日去重），文章阅读量，后台 30 天趋势图表
 - 后台 `/admin`：登录（argon2 + Session + 登录限流）、仪表盘、文章管理（CodeMirror 分屏编辑器、
-  图片粘贴/拖拽上传）、分类/标签/系列、友链、图片素材库、站点设置
-- 运维：Docker Compose（Caddy + Web + API + PostgreSQL）、备份脚本（数据库 + 图片打包）
+  图片粘贴/拖拽上传）、分类/标签/系列、友链、图片素材库、站点设置、备份管理（生成/恢复/上传/下载）
+- 运维：Docker Compose（Caddy + Web + API + PostgreSQL）、备份脚本与后台共用 zip 格式（数据库 + 图片）
 
 ## 目录结构
 
@@ -48,8 +48,9 @@ SaltedBlog/
 │       ├── auth.rs       # argon2、Session、登录限流、守卫中间件
 │       └── render.rs     # comrak 渲染 + TOC 提取 + jieba 分词
 ├── deploy/               # Dockerfile.api / Dockerfile.web / docker-compose.yml / Caddyfile
-├── scripts/backup.sh     # 备份脚本
+├── scripts/backup.sh     # 备份脚本（与后台同格式 zip）
 ├── data/                 # 运行时数据（gitignore）：blog.db、uploads/
+├── backups/              # 备份 zip（gitignore）
 └── .env.example
 ```
 
@@ -92,27 +93,38 @@ docker compose up -d --build
 
 ## 备份与恢复
 
+备份内容为**当前数据库引擎**对应的库文件（SQLite → `blog.db`，PostgreSQL → `blog.sql`）+ `uploads/`，打包为 zip，保存到 `backups/`。SQLite 与 PostgreSQL **不互相转换恢复**。
+
+### 后台「备份管理」
+
+登录 `/admin/backup` 可生成备份、上传本机 zip、下载、恢复、删除。恢复前会自动再生成一份当前状态的安全备份。默认保留最近 7 份（`BACKUP_KEEP`）。
+
+### 命令行脚本
+
 ```bash
-./scripts/backup.sh              # 自动检测模式，输出到 backups/saltedblog_*.tar.gz
+./scripts/backup.sh              # 自动检测模式，输出 backups/saltedblog_{sqlite|postgres}_*.zip
 KEEP=30 ./scripts/backup.sh      # 保留最近 30 份
 ```
 
 定时备份（crontab）：`0 3 * * * cd /opt/SaltedBlog && ./scripts/backup.sh >> backups/backup.log 2>&1`
 
-恢复：
+zip 内部结构：
 
-```bash
-# SQLite：解包后把 blog.db 放回 data/，uploads/ 放回 data/uploads
-tar -xzf backups/saltedblog_sqlite_xxx.tar.gz -C /tmp/restore
-
-# PostgreSQL：
-tar -xzf backups/saltedblog_postgres_xxx.tar.gz -C /tmp/restore
-cd deploy
-cat /tmp/restore/blog.sql | docker compose exec -T postgres \
-  sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
-docker compose cp /tmp/restore/uploads/. api:/data/uploads
+```text
+manifest.json
+blog.db          # 仅 SQLite 备份
+blog.sql         # 仅 PostgreSQL 备份
+uploads/
 ```
 
+恢复也可在后台完成；若手动恢复：
+
+```bash
+# 将 zip 放到 backups/ 后，在后台选择「恢复」
+# 或对本机 SQLite：解压后替换 data/blog.db 与 data/uploads/
+```
+
+相关环境变量：`BACKUP_DIR`（默认 `backups`）、`BACKUP_KEEP`（默认 7）、`BACKUP_UPLOAD_MAX_MB`（默认 1024）。
 ## 主要环境变量
 
 | 变量 | 说明 | 默认 |
@@ -123,6 +135,9 @@ docker compose cp /tmp/restore/uploads/. api:/data/uploads
 | `PUBLIC_SITE_URL` | 站点对外地址（canonical / RSS / sitemap） | `http://localhost:4321` |
 | `SITE_DOMAIN` | 域名（仅 Docker，供 Caddy 使用） | — |
 | `UPLOAD_MAX_MB` | 上传大小上限 | 20 |
+| `BACKUP_DIR` | 备份目录 | `backups` |
+| `BACKUP_KEEP` | 自动保留最近 N 份备份 | 7 |
+| `BACKUP_UPLOAD_MAX_MB` | 后台上传备份 zip 上限（MB） | 1024 |
 | `STATS_TZ_OFFSET_HOURS` | 统计时区偏移（北京=8） | 8 |
 
 ## Giscus 评论配置
