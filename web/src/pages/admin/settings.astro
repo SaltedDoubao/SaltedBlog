@@ -21,6 +21,33 @@ const groups = [
     ],
   },
   {
+    title: 'HOME / 沉浸式首页文案',
+    fields: [
+      { key: 'home_eyebrow_zh', label: '首屏眉题（中文首页）', type: 'input' },
+      { key: 'home_eyebrow_en', label: '首屏眉题（英文首页）', type: 'input' },
+      { key: 'home_news_title_zh', label: '情报区标题（中文）', type: 'input' },
+      { key: 'home_news_title_en', label: '情报区标题（英文）', type: 'input' },
+      { key: 'home_news_description_zh', label: '情报区说明（中文）', type: 'textarea-short' },
+      { key: 'home_news_description_en', label: '情报区说明（英文）', type: 'textarea-short' },
+      { key: 'home_world_title_zh', label: '世界区标题（中文）', type: 'input' },
+      { key: 'home_world_title_en', label: '世界区标题（英文）', type: 'input' },
+      { key: 'home_world_description_zh', label: '世界区说明（中文）', type: 'textarea-short' },
+      { key: 'home_world_description_en', label: '世界区说明（英文）', type: 'textarea-short' },
+      { key: 'home_system_title_zh', label: '系统区标题（中文）', type: 'input' },
+      { key: 'home_system_title_en', label: '系统区标题（英文）', type: 'input' },
+      { key: 'home_system_description_zh', label: '系统区说明（中文）', type: 'textarea-short' },
+      { key: 'home_system_description_en', label: '系统区说明（英文）', type: 'textarea-short' },
+      { key: 'home_operator_title_zh', label: '档案区标题（中文）', type: 'input' },
+      { key: 'home_operator_title_en', label: '档案区标题（英文）', type: 'input' },
+      { key: 'home_operator_description_zh', label: '档案区说明（中文）', type: 'textarea-short' },
+      { key: 'home_operator_description_en', label: '档案区说明（英文）', type: 'textarea-short' },
+      { key: 'home_protocol_title_zh', label: '协议区标题（中文）', type: 'input' },
+      { key: 'home_protocol_title_en', label: '协议区标题（英文）', type: 'input' },
+      { key: 'home_protocol_description_zh', label: '协议区说明（中文）', type: 'textarea-short' },
+      { key: 'home_protocol_description_en', label: '协议区说明（英文）', type: 'textarea-short' },
+    ],
+  },
+  {
     title: 'GISCUS / 评论系统（github.com/giscus/giscus 获取参数）',
     fields: [
       { key: 'giscus_repo', label: '仓库（owner/repo）', type: 'input' },
@@ -53,16 +80,21 @@ const groups = [
         <div class="admin-panel__body">
           <div class="form-grid">
             {group.fields.map((field) => (
-              <div class:list={['form-field', { 'form-field--full': field.type === 'textarea' }]}>
+              <div
+                class:list={[
+                  'form-field',
+                  { 'form-field--full': field.type === 'textarea' || field.type === 'textarea-short' },
+                ]}
+              >
                 <label class="label" for={`setting-${field.key}`}>
                   {field.label}
                 </label>
-                {field.type === 'textarea' ? (
+                {field.type === 'textarea' || field.type === 'textarea-short' ? (
                   <textarea
                     class="textarea"
                     id={`setting-${field.key}`}
                     data-setting={field.key}
-                    rows="10"
+                    rows={field.type === 'textarea-short' ? '3' : '10'}
                   />
                 ) : (
                   <input class="input" id={`setting-${field.key}`} data-setting={field.key} />
