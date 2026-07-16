@@ -1,8 +1,7 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import PostCard from '@/components/PostCard.astro';
-import { getPosts, getTaxonomy, getSettingsCached } from '@/lib/api';
-import { t, localePath, type Lang } from '@/i18n';
+import { getFriends, getPosts, getSettingsCached, getTaxonomy } from '@/lib/api';
+import { formatDate, localName, localePath, t, type Lang } from '@/i18n';
 
 interface Props {
   lang: Lang;
@@ -10,385 +9,1166 @@ interface Props {
 
 const { lang } = Astro.props;
 
-const [postsRes, taxonomy, settings] = await Promise.all([
-  getPosts({ lang, page: 1, pageSize: 7 }),
+const [postsRes, taxonomy, settings, friendsRes] = await Promise.all([
+  getPosts({ lang, page: 1, pageSize: 3 }),
   getTaxonomy(lang),
   getSettingsCached(),
+  getFriends(),
 ]);
 
+const ui = {
+  zh: {
+    eyebrow: '个人博客 / 越过边界',
+    newsTitle: '最新情报',
+    newsDescription: '按时间顺序接收来自技术与生活前线的最新记录。',
+    worldTitle: '内容疆域',
+    worldDescription: '沿分类、系列与时间坐标进入博客的不同区域。',
+    systemTitle: '内容部署系统',
+    systemDescription: '通过文章网络、分类矩阵与全文扫描定位所需内容。',
+    operatorTitle: '站点档案',
+    operatorDescription: '读取博主、站点与连接网络的授权档案。',
+    protocolTitle: '跨越边界\n直至下一篇记录',
+    protocolDescription: '所有内容节点均已连接。选择一条路径，继续探索技术与生活的边界。',
+    latest: '最新文章',
+    enter: '进入博客',
+    explore: '浏览全部文章',
+    openProtocol: '打开站点协议',
+    loading: '正在载入视觉协议',
+    categories: '分类坐标',
+    categoriesDesc: '按主题进入内容区域，沿知识边界定位相关记录。',
+    series: '系列航线',
+    seriesDesc: '沿连续写作计划阅读上下关联的完整内容。',
+    archive: '时间档案',
+    archiveDesc: '按发布时间回溯所有已公开记录和历史信号。',
+    activeCategories: '有效分类',
+    tags: '标签节点',
+    posts: '公开文章',
+    activeSeries: '有效系列',
+    seriesEntries: '系列文章',
+    latestYear: '最新年份',
+    network: '文章网络',
+    networkDesc: '读取全部公开文章，并从最新记录继续深入内容网络。',
+    taxonomy: '分类矩阵',
+    taxonomyDesc: '通过分类与标签交叉筛选，快速收窄内容范围。',
+    scanner: '全文扫描',
+    scannerDesc: '输入关键词，对已公开内容执行全文检索。',
+    authorProfile: '博主档案',
+    authorRole: 'AUTHOR / CONTROL',
+    siteProfile: '关于本站',
+    siteRole: 'SITE / PROTOCOL',
+    connections: '连接网络',
+    connectionsRole: 'FRIENDS / LINK',
+    connectionsDesc: (count: number) => `当前已建立 ${count} 条友站连接，继续访问外部内容节点。`,
+    readAbout: '读取关于档案',
+    viewFriends: '查看连接网络',
+    open: '进入区域',
+    search: '开始扫描',
+    status: '连接稳定',
+    online: '在线',
+    noPosts: '暂无公开信号',
+    protocolReady: '协议就绪 / 内容节点在线',
+    modalTitle: 'SaltedBlog 站点协议',
+    modalLabel: 'AUTHORIZED CONTENT NETWORK',
+    close: '关闭站点协议',
+    scroll: '滚动',
+  },
+  en: {
+    eyebrow: 'PERSONAL BLOG / OVER THE FRONTIER',
+    newsTitle: 'Latest Intelligence',
+    newsDescription: 'Fresh signals from the frontiers of technology and life, ordered by time.',
+    worldTitle: 'Content Frontier',
+    worldDescription: 'Enter the archive through categories, series, and chronological coordinates.',
+    systemTitle: 'Content Deployment System',
+    systemDescription: 'Locate knowledge through the post network, taxonomy matrix, and full-text scanner.',
+    operatorTitle: 'Site Personnel Archive',
+    operatorDescription: 'Read the authorized records of the author, the site, and its network.',
+    protocolTitle: 'Cross the Frontier\nToward the Next Record',
+    protocolDescription: 'All content nodes are connected. Choose a path and continue beyond the frontier.',
+    latest: 'Latest Posts',
+    enter: 'Enter Blog',
+    explore: 'Browse All Posts',
+    openProtocol: 'Open Site Protocol',
+    loading: 'Loading visual protocol',
+    categories: 'Category Coordinates',
+    categoriesDesc: 'Enter by topic and locate related records along the knowledge frontier.',
+    series: 'Series Routes',
+    seriesDesc: 'Follow continuous writing projects and read each connected entry in context.',
+    archive: 'Time Archive',
+    archiveDesc: 'Trace every published record and historical signal by release time.',
+    activeCategories: 'ACTIVE CATEGORIES',
+    tags: 'TAG NODES',
+    posts: 'PUBLIC POSTS',
+    activeSeries: 'ACTIVE SERIES',
+    seriesEntries: 'SERIES POSTS',
+    latestYear: 'LATEST YEAR',
+    network: 'Post Network',
+    networkDesc: 'Read every public post and move deeper into the network from the latest record.',
+    taxonomy: 'Taxonomy Matrix',
+    taxonomyDesc: 'Cross-filter categories and tags to narrow the content field.',
+    scanner: 'Full-text Scanner',
+    scannerDesc: 'Enter keywords and scan all public content for matching signals.',
+    authorProfile: 'Author Profile',
+    authorRole: 'AUTHOR / CONTROL',
+    siteProfile: 'About the Site',
+    siteRole: 'SITE / PROTOCOL',
+    connections: 'Connection Network',
+    connectionsRole: 'FRIENDS / LINK',
+    connectionsDesc: (count: number) => `${count} external site connection${count === 1 ? '' : 's'} online. Continue to connected content nodes.`,
+    readAbout: 'Read About File',
+    viewFriends: 'View Connections',
+    open: 'Enter Area',
+    search: 'Start Scan',
+    status: 'Connection Stable',
+    online: 'Online',
+    noPosts: 'No public signal',
+    protocolReady: 'PROTOCOL READY / CONTENT NODES ONLINE',
+    modalTitle: 'SaltedBlog Site Protocol',
+    modalLabel: 'AUTHORIZED CONTENT NETWORK',
+    close: 'Close site protocol',
+    scroll: 'Scroll',
+  },
+}[lang];
+
+const configured = (key: string, fallback: string) => settings[`${key}_${lang}`]?.trim() || fallback;
 const siteTitle = settings[`site_title_${lang}`] || 'SaltedBlog';
 const description = settings[`description_${lang}`] || '';
-const [featured, ...rest] = postsRes.items;
-const totalPosts = postsRes.total;
-const totalCategories = taxonomy.categories.filter((c) => (c.count ?? 0) > 0).length;
-const totalTags = taxonomy.tags.filter((tg) => (tg.count ?? 0) > 0).length;
+const author = settings.author || siteTitle;
+const activeCategories = taxonomy.categories.filter((item) => (item.count ?? 0) > 0);
+const activeTags = taxonomy.tags.filter((item) => (item.count ?? 0) > 0);
+const activeSeries = taxonomy.series.filter((item) => (item.count ?? 0) > 0);
+const seriesEntries = activeSeries.reduce((sum, item) => sum + (item.count ?? 0), 0);
+const latestYear = postsRes.items[0]?.published_at
+  ? new Date(postsRes.items[0].published_at!).getFullYear()
+  : new Date().getFullYear();
+
+const eyebrow = configured('home_eyebrow', ui.eyebrow);
+const newsTitle = configured('home_news_title', ui.newsTitle);
+const newsDescription = configured('home_news_description', ui.newsDescription);
+const worldTitle = configured('home_world_title', ui.worldTitle);
+const worldDescription = configured('home_world_description', ui.worldDescription);
+const systemTitle = configured('home_system_title', ui.systemTitle);
+const systemDescription = configured('home_system_description', ui.systemDescription);
+const operatorTitle = configured('home_operator_title', ui.operatorTitle);
+const operatorDescription = configured('home_operator_description', ui.operatorDescription);
+const protocolTitle = configured('home_protocol_title', ui.protocolTitle);
+const protocolDescription = configured('home_protocol_description', ui.protocolDescription);
+
+const portals = [
+  {
+    id: '01',
+    className: 'portal-art--categories',
+    title: ui.categories,
+    description: ui.categoriesDesc,
+    href: localePath(lang, '/categories'),
+    metrics: [
+      [activeCategories.length, ui.activeCategories],
+      [activeTags.length, ui.tags],
+      [postsRes.total, ui.posts],
+    ],
+  },
+  {
+    id: '02',
+    className: 'portal-art--series',
+    title: ui.series,
+    description: ui.seriesDesc,
+    href: localePath(lang, '/series'),
+    metrics: [
+      [activeSeries.length, ui.activeSeries],
+      [seriesEntries, ui.seriesEntries],
+      [postsRes.total, ui.posts],
+    ],
+  },
+  {
+    id: '03',
+    className: 'portal-art--archive',
+    title: ui.archive,
+    description: ui.archiveDesc,
+    href: localePath(lang, '/archive'),
+    metrics: [
+      [latestYear, ui.latestYear],
+      [postsRes.total, ui.posts],
+      [activeTags.length, ui.tags],
+    ],
+  },
+];
 ---
 
-<BaseLayout lang={lang}>
-  <!-- HERO -->
-  <section class="hero">
-    <div class="hero__grid" aria-hidden="true"></div>
-    <div class="hero__beam" aria-hidden="true"></div>
-    <div class="container hero__content">
-      <div class="hero__copy rise-in">
-        <div class="hero__eyebrow mono">{t(lang, 'home.eyebrow')}</div>
-        <h1 class="hero__title">
-          {siteTitle}
-          <span>BLOG · TERMINAL</span>
-        </h1>
-        {description && <p class="hero__desc">{description}</p>}
-        <div class="hero__actions">
-          <a class="btn btn--primary btn--cut" href={localePath(lang, '/posts')}>
-            {t(lang, 'home.viewAll')} <span aria-hidden="true">↘</span>
-          </a>
-          <a class="btn hero__btn-ghost" href={localePath(lang, '/about')}>
-            {t(lang, 'nav.about')}
-          </a>
-        </div>
-      </div>
-
-      <aside class="hero__side rise-in" aria-hidden="true">
-        <div class="hero__datum mono">
-          <span>{t(lang, 'home.stats.posts')}</span>
-          <b>{String(totalPosts).padStart(2, '0')}</b>
-        </div>
-        <div class="hero__datum mono">
-          <span>{t(lang, 'home.stats.categories')}</span>
-          <b>{String(totalCategories).padStart(2, '0')}</b>
-        </div>
-        <div class="hero__datum mono">
-          <span>{t(lang, 'home.stats.tags')}</span>
-          <b>{String(totalTags).padStart(2, '0')}</b>
-        </div>
-        <div class="hero__datum mono">
-          <span>LINK STATUS</span>
-          <b>ONLINE</b>
-        </div>
-      </aside>
-    </div>
-    <div class="hero__index mono" aria-hidden="true">
-      <strong>00</strong>
-      <span>LANDING<br />PROTOCOL</span>
-    </div>
-    <div class="scroll-cue mono" aria-hidden="true">
-      <span>SCROLL</span><i></i>
-    </div>
-  </section>
-
-  <!-- 最新文章 -->
-  <section class="section">
-    <div class="watermark" aria-hidden="true">LATEST</div>
-    <div class="container">
-      <header class="home-heading">
-        <div class="home-heading__num mono">01 / LATEST</div>
-        <h2 class="home-heading__title">{t(lang, 'home.latest')}</h2>
-        <p class="home-heading__meta">{t(lang, 'home.latest.sub')}</p>
-      </header>
-
-      {
-        postsRes.items.length === 0 ? (
-          <div class="empty-state mono">NO SIGNAL / {t(lang, 'posts.empty')}</div>
-        ) : (
-          <div class="home-grid">
-            {featured && (
-              <div class="home-grid__feature">
-                <PostCard lang={lang} post={featured} index="01" />
-              </div>
-            )}
-            {rest.map((post, i) => (
-              <PostCard lang={lang} post={post} index={String(i + 2).padStart(2, '0')} />
-            ))}
+<BaseLayout lang={lang} variant="home">
+  <div class="home-interface" id="homeInterface">
+    <div class="home-boot" id="homeBoot" aria-label={ui.loading} aria-live="polite">
+      <div class="home-boot__box">
+        <div class="home-boot__mark">
+          <span class="home-boot__glyph" aria-hidden="true"></span>
+          <div>
+            {siteTitle}
+            <div class="home-boot__sub mono">INDUSTRIAL INTERFACE / SYSTEM BOOT</div>
           </div>
-        )
-      }
-
-      <div class="home-more">
-        <a class="btn" href={localePath(lang, '/posts')}>
-          {t(lang, 'home.viewAll')} →
-        </a>
+        </div>
+        <div class="home-boot__bar"><i id="homeBootFill"></i></div>
+        <div class="home-boot__meta mono">
+          <span>{ui.loading}</span><b id="homeBootCount">000%</b>
+        </div>
       </div>
     </div>
-  </section>
+
+    <div class="home-cursor home-cursor--dot" id="homeCursorDot" aria-hidden="true"></div>
+    <div class="home-cursor home-cursor--ring" id="homeCursorRing" aria-hidden="true"></div>
+
+    <section class="hero" id="home-top">
+      <canvas id="heroCanvas" aria-hidden="true"></canvas>
+      <div class="hero__scene" aria-hidden="true"></div>
+      <div class="terrain terrain--back" aria-hidden="true"></div>
+      <div class="terrain terrain--front" aria-hidden="true"></div>
+      <div class="hero__wash" aria-hidden="true"></div>
+      <div class="hero__grid" aria-hidden="true"></div>
+      <div class="container hero__content">
+        <div class="hero__copy">
+          <div class="hero__eyebrow mono" data-reveal>{eyebrow}</div>
+          <h1 data-reveal="left">{siteTitle}<span>BLOG · TERMINAL</span></h1>
+          {description && <p class="hero__desc" data-reveal>{description}</p>}
+          <div class="hero__actions" data-reveal>
+            <button class="home-btn home-btn--primary interactive" type="button" data-open-protocol>
+              <span aria-hidden="true">▶</span> {ui.openProtocol}
+            </button>
+            <a class="home-btn home-btn--ghost interactive" href={localePath(lang, '/posts')}>
+              {ui.explore} <span aria-hidden="true">↘</span>
+            </a>
+          </div>
+        </div>
+        <aside class="hero__side" data-reveal="right" aria-label="Blog statistics">
+          <div class="hero__datum mono"><span>{ui.posts}</span><b>{String(postsRes.total).padStart(2, '0')}</b></div>
+          <div class="hero__datum mono"><span>{ui.activeCategories}</span><b>{String(activeCategories.length).padStart(2, '0')}</b></div>
+          <div class="hero__datum mono"><span>{ui.tags}</span><b>{String(activeTags.length).padStart(2, '0')}</b></div>
+          <div class="hero__datum mono"><span>LINK STATUS</span><b>{ui.online}</b></div>
+        </aside>
+        <div class="hero__stamp mono" aria-hidden="true">PROTOCOL / BLOG / ONLINE</div>
+      </div>
+      <div class="hero__index mono" aria-hidden="true"><strong>00</strong><span>LANDING<br />PROTOCOL</span></div>
+      <div class="scroll-cue mono" aria-hidden="true"><span>{ui.scroll}</span><i></i></div>
+    </section>
+
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker__track mono">
+        {Array.from({ length: 4 }).map(() => (
+          <div class="ticker__item">SALTEDBLOG / CONTENT NETWORK / SIGNAL CONNECTED / ARCHIVE ONLINE</div>
+        ))}
+      </div>
+    </div>
+
+    <section class="home-section home-section--grid" id="home-news">
+      <div class="section-watermark mono" aria-hidden="true">INFORMATION</div>
+      <div class="container">
+        <header class="home-heading" data-reveal>
+          <div class="home-heading__num mono">01 / NEWS</div>
+          <h2>{newsTitle}</h2>
+          <p>{newsDescription}</p>
+        </header>
+        {
+          postsRes.items.length ? (
+            <div class="news-grid">
+              {postsRes.items.map((post, index) => {
+                const href = localePath(lang, `/posts/${post.slug}`);
+                const date = formatDate(lang, post.published_at);
+                const category = localName(lang, post.category);
+                return (
+                  <article
+                    class:list={['news-card', 'interactive', { 'news-card--feature': index === 0 }]}
+                    data-reveal={index === 0 ? 'left' : index === 2 ? 'right' : ''}
+                  >
+                    <a class="news-card__visual" href={href} aria-label={post.title}>
+                      {post.cover ? (
+                        <img src={post.cover} alt="" loading={index === 0 ? 'eager' : 'lazy'} />
+                      ) : (
+                        <span class={`news-card__art news-card__art--${(post.id % 3) + 1}`} />
+                      )}
+                    </a>
+                    <div class="news-card__body">
+                      <div class="news-card__tag mono">
+                        {date || '---- -- --'} {category && <span>/ {category}</span>}
+                      </div>
+                      <h3><a href={href}>{post.title}</a></h3>
+                      {post.summary && <p>{post.summary}</p>}
+                      <a class="news-card__arrow" href={href} aria-label={post.title}>↗</a>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div class="home-empty mono" data-reveal>{ui.noPosts}</div>
+          )
+        }
+        <div class="section-action" data-reveal>
+          <a class="home-btn" href={localePath(lang, '/posts')}>{t(lang, 'home.viewAll')} →</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="world" id="home-world">
+      <div class="world__sticky">
+        <div class="world__back" aria-hidden="true"></div>
+        <header class="world__header">
+          <span class="mono">02 / WORLD DATA</span>
+          <h2>{worldTitle}</h2>
+          <p>{worldDescription}</p>
+        </header>
+        <div class="world__track" id="worldTrack">
+          {portals.map((portal) => (
+            <article class="world-panel">
+              <a class:list={['world-panel__art', portal.className]} href={portal.href} aria-label={portal.title}></a>
+              <div class="world-panel__copy">
+                <div class="world-panel__no mono">AREA / {portal.id}</div>
+                <h3>{portal.title}</h3>
+                <p>{portal.description}</p>
+                <div class="world-panel__data mono">
+                  {portal.metrics.map(([value, label]) => (
+                    <div><b class="counter" data-value={value}>0</b><span>{label}</span></div>
+                  ))}
+                </div>
+                <a class="home-btn home-btn--ghost world-panel__action" href={portal.href}>{ui.open} ↗</a>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div class="world__progress" aria-hidden="true"><i id="worldProgress"></i></div>
+      </div>
+    </section>
+
+    <section class="home-section home-section--grid" id="home-systems">
+      <div class="section-watermark mono" aria-hidden="true">SYSTEM</div>
+      <div class="container">
+        <header class="home-heading" data-reveal>
+          <div class="home-heading__num mono">03 / SYSTEM</div>
+          <h2>{systemTitle}</h2>
+          <p>{systemDescription}</p>
+        </header>
+        <div class="systems-layout" data-reveal>
+          <div class="systems-visual">
+            <canvas id="radarCanvas" aria-hidden="true"></canvas>
+            <div class="systems-visual__hud" aria-hidden="true"></div>
+          </div>
+          <div class="systems-copy">
+            <div class="system-tabs" role="tablist" aria-label={systemTitle}>
+              <button
+                class="system-tab is-active"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                data-mode="network"
+                data-action-href={localePath(lang, '/posts')}
+                data-action-label={ui.explore}
+              >
+                <small class="mono">MODULE 01 / NETWORK · {postsRes.total}</small>
+                <h3>{ui.network}</h3><p>{ui.networkDesc}</p>
+              </button>
+              <button
+                class="system-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                data-mode="taxonomy"
+                data-action-href={localePath(lang, '/categories')}
+                data-action-label={ui.open}
+              >
+                <small class="mono">MODULE 02 / TAXONOMY · {activeCategories.length + activeTags.length}</small>
+                <h3>{ui.taxonomy}</h3><p>{ui.taxonomyDesc}</p>
+              </button>
+              <button
+                class="system-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                data-mode="scan"
+                data-action-href={localePath(lang, '/search')}
+                data-action-label={ui.search}
+              >
+                <small class="mono">MODULE 03 / SCANNING · READY</small>
+                <h3>{ui.scanner}</h3><p>{ui.scannerDesc}</p>
+              </button>
+            </div>
+            <div class="systems-action">
+              <a class="home-btn" id="systemAction" href={localePath(lang, '/posts')}>{ui.explore} ↗</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="home-section operators" id="home-operators">
+      <div class="section-watermark mono" aria-hidden="true">OPERATORS</div>
+      <div class="container">
+        <header class="home-heading" data-reveal>
+          <div class="home-heading__num mono">04 / OPERATOR</div>
+          <h2>{operatorTitle}</h2>
+          <p>{operatorDescription}</p>
+        </header>
+        <div class="operator-stage" data-reveal>
+          <div class="operator-list" role="tablist" aria-label={operatorTitle}>
+            <button
+              class="operator-btn is-active"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              data-op="1"
+              data-name={author}
+              data-role={ui.authorRole}
+              data-desc={description || operatorDescription}
+              data-href={localePath(lang, '/about')}
+              data-action={ui.readAbout}
+            ><span class="operator-btn__id mono">01</span><span><b>{ui.authorProfile}</b><small>{ui.authorRole}</small></span></button>
+            <button
+              class="operator-btn"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              data-op="2"
+              data-name={siteTitle}
+              data-role={ui.siteRole}
+              data-desc={operatorDescription}
+              data-href={localePath(lang, '/about')}
+              data-action={ui.readAbout}
+            ><span class="operator-btn__id mono">02</span><span><b>{ui.siteProfile}</b><small>{ui.siteRole}</small></span></button>
+            <button
+              class="operator-btn"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              data-op="3"
+              data-name={ui.connections}
+              data-role={ui.connectionsRole}
+              data-desc={ui.connectionsDesc(friendsRes.items.length)}
+              data-href={localePath(lang, '/friends')}
+              data-action={ui.viewFriends}
+            ><span class="operator-btn__id mono">03</span><span><b>{ui.connections}</b><small>{friendsRes.items.length} LINKS</small></span></button>
+          </div>
+          <div class="operator-main" id="operatorMain" data-op="1">
+            <div class="operator-silhouette" aria-hidden="true"></div>
+            <div class="operator-copy">
+              <div class="operator-copy__role mono" id="operatorRole">{ui.authorRole}</div>
+              <h3 id="operatorName">{author}</h3>
+              <p id="operatorDesc">{description || operatorDescription}</p>
+              <a class="home-btn" id="operatorAction" href={localePath(lang, '/about')}>{ui.readAbout} ↗</a>
+            </div>
+            <div class="operator-code mono" aria-hidden="true">S.B. PERSONNEL ARCHIVE / AUTHORIZED</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta">
+      <div class="final-cta__inner" data-reveal>
+        <small class="mono">{ui.protocolReady}</small>
+        <h2>{protocolTitle}</h2>
+        <p>{protocolDescription}</p>
+        <button class="home-btn home-btn--primary interactive" type="button" data-open-protocol>
+          {ui.enter} ↗
+        </button>
+      </div>
+    </section>
+
+    <div class="protocol-modal" id="protocolModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="protocolTitle">
+      <div class="protocol-modal__box" role="document">
+        <div class="protocol-modal__visual" aria-hidden="true"></div>
+        <button class="protocol-modal__close interactive" id="protocolClose" type="button" aria-label={ui.close}>×</button>
+        <div class="protocol-modal__copy">
+          <div class="mono">{ui.modalLabel}</div>
+          <h2 id="protocolTitle">{ui.modalTitle}</h2>
+          <p>{protocolDescription}</p>
+          <div class="protocol-modal__stats mono">
+            <span><b>{postsRes.total}</b>{ui.posts}</span>
+            <span><b>{activeCategories.length}</b>{ui.activeCategories}</span>
+            <span><b>{friendsRes.items.length}</b>LINKS</span>
+          </div>
+          <nav class="protocol-modal__links" aria-label={ui.modalTitle}>
+            <a class="home-btn home-btn--primary" href={localePath(lang, '/posts')}>{ui.explore}</a>
+            <a class="home-btn home-btn--ghost" href={localePath(lang, '/about')}>{ui.readAbout}</a>
+          </nav>
+        </div>
+        <div class="protocol-modal__timeline" aria-hidden="true"></div>
+      </div>
+    </div>
+  </div>
 </BaseLayout>
 
 <style>
-  /* ---- HERO ---- */
-  .hero {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    min-height: calc(88svh - var(--header-h));
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    background:
-      radial-gradient(circle at 74% 30%, rgba(244, 246, 0, 0.14), transparent 26%),
-      linear-gradient(120deg, #16191c 0%, #23282c 45%, #101315 100%);
-    color: #f7f7f2;
-    border-bottom: 1px solid #2e3335;
+  :global(body.home-page) {
+    display: block;
+    background: var(--bg);
+    overflow-x: hidden;
   }
 
-  .hero__grid {
+  :global(body.home-page.is-locked) { overflow: hidden; }
+  :global(html[data-home-boot='play'] body.home-page) { overflow: hidden; }
+  :global(body.home-page main) { min-height: 0; }
+
+  .home-interface {
+    --paper: var(--bg);
+    --paper-muted: var(--bg-muted);
+    --paper-surface: var(--surface);
+    --ink: var(--text);
+    --ink-soft: var(--text-2);
+    --line: var(--border);
+    position: relative;
+    overflow: clip;
+    color: var(--ink);
+    background: var(--paper);
+  }
+
+  .home-boot {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background:
+      linear-gradient(rgba(244, 246, 0, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(244, 246, 0, 0.04) 1px, transparent 1px),
+      var(--black);
+    background-size: 38px 38px;
+    transition: opacity 700ms var(--ease), visibility 700ms;
+  }
+
+  .home-boot::before {
+    content: '';
     position: absolute;
     inset: 0;
-    z-index: -1;
-    opacity: 0.22;
-    background-image: linear-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
-    background-size: 6.25vw 6.25vw;
-    mask-image: linear-gradient(90deg, #000, transparent 80%);
+    pointer-events: none;
+    background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255, 255, 255, 0.018) 3px 4px);
+    animation: scan-move 5s linear infinite;
   }
 
-  .hero__beam {
-    position: absolute;
-    inset: -10%;
-    z-index: -1;
-    background:
-      linear-gradient(115deg, transparent 0 55%, rgba(244, 246, 0, 0.75) 55.2% 55.7%, transparent 55.9%),
-      linear-gradient(115deg, transparent 0 47%, rgba(255, 255, 255, 0.16) 47.2% 47.5%, transparent 47.7%);
+  :global(html[data-home-boot='skip']) .home-boot,
+  .home-boot.is-done { opacity: 0; visibility: hidden; pointer-events: none; }
+  .home-boot__box { width: min(560px, calc(100vw - 48px)); position: relative; }
+  .home-boot__mark { display: flex; align-items: center; gap: 16px; margin-bottom: 38px; font-size: clamp(30px, 6vw, 62px); font-weight: 900; line-height: 0.9; }
+  .home-boot__glyph { width: 56px; aspect-ratio: 1; flex: none; background: var(--primary); clip-path: polygon(50% 0, 100% 24%, 75% 50%, 100% 76%, 50% 100%, 0 76%, 25% 50%, 0 24%); animation: boot-glyph 1.2s steps(8) infinite; }
+  .home-boot__sub { margin-top: 9px; color: #a8aca8; font-size: 10px; }
+  .home-boot__bar { height: 4px; overflow: hidden; position: relative; background: #2a2f31; }
+  .home-boot__bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--primary); box-shadow: 0 0 18px rgba(244, 246, 0, 0.55); }
+  .home-boot__meta { display: flex; justify-content: space-between; margin-top: 10px; color: #9fa5a7; font-size: 10px; }
+
+  .home-cursor { position: fixed; z-index: 9000; display: none; pointer-events: none; border-radius: 50%; mix-blend-mode: difference; }
+  .home-cursor--dot { width: 5px; height: 5px; background: #fff; transform: translate(-50%, -50%); }
+  .home-cursor--ring { width: 34px; height: 34px; border: 1px solid #fff; transform: translate(-50%, -50%); transition: width 200ms, height 200ms, border-color 200ms; }
+  .home-cursor--ring.is-active { width: 54px; height: 54px; border-color: var(--primary); }
+  @media (hover: hover) and (pointer: fine) { .home-cursor { display: block; } }
+
+  .hero { min-height: 100svh; position: relative; isolation: isolate; overflow: hidden; color: #fff; background: #92999b; }
+  #heroCanvas { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; }
+  .hero__scene { position: absolute; inset: 0; z-index: -3; overflow: hidden; background: radial-gradient(circle at 73% 35%, rgba(244,246,0,.28), transparent 13%), radial-gradient(circle at 65% 48%, rgba(255,255,255,.55), transparent 20%), linear-gradient(120deg,#d9dddc 0%,#aeb5b6 42%,#555d60 78%,#202528 100%); }
+  .hero__scene::before { content: ''; position: absolute; inset: -10%; background: linear-gradient(115deg,transparent 0 46%,rgba(11,13,15,.65) 46.2% 47.4%,transparent 47.6%), linear-gradient(115deg,transparent 0 56%,rgba(244,246,0,.86) 56.2% 57%,transparent 57.2%), repeating-linear-gradient(115deg,transparent 0 55px,rgba(11,13,15,.08) 56px 57px), radial-gradient(ellipse at 72% 60%,#dfe3df 0 10%,transparent 10.5%), radial-gradient(ellipse at 70% 58%,rgba(11,13,15,.88) 0 15%,transparent 15.5%); transform: translate(calc(var(--mx, 0) * -12px), calc(var(--my, 0) * -8px)) scale(1.08); transition: transform 100ms linear; filter: contrast(1.08); }
+  .hero__scene::after { content: ''; position: absolute; left: 48%; top: 4%; width: 44vw; height: 110%; opacity: .76; background: linear-gradient(90deg,transparent 0 48%,rgba(255,255,255,.32) 48% 48.35%,transparent 48.35%), repeating-linear-gradient(90deg,transparent 0 50px,rgba(255,255,255,.09) 51px 52px), repeating-linear-gradient(0deg,rgba(11,13,15,.38) 0 4px,transparent 4px 17px); clip-path: polygon(48% 0,100% 17%,82% 100%,0 90%,21% 17%); transform: perspective(800px) rotateY(-14deg) translate(calc(var(--mx, 0) * 18px), calc(var(--my, 0) * 9px)); }
+  .terrain { position: absolute; z-index: -2; pointer-events: none; }
+  .terrain--back { width: 70vw; height: 58vh; right: -6vw; bottom: -10vh; opacity: .83; background: #31383b; clip-path: polygon(8% 70%,28% 24%,42% 54%,58% 0,72% 48%,100% 28%,100% 100%,0 100%); transform: translate(calc(var(--mx, 0) * 14px), calc(var(--my, 0) * 6px)); }
+  .terrain--front { width: 74vw; height: 38vh; left: -7vw; bottom: -9vh; opacity: .93; background: #111719; clip-path: polygon(0 42%,18% 8%,36% 45%,54% 20%,70% 50%,88% 14%,100% 55%,100% 100%,0 100%); transform: translate(calc(var(--mx, 0) * -20px), calc(var(--my, 0) * -5px)); }
+  .hero__wash { position: absolute; inset: 0; z-index: -2; background: linear-gradient(90deg,rgba(11,13,15,.84) 0,rgba(11,13,15,.47) 36%,transparent 68%), linear-gradient(0deg,rgba(11,13,15,.65),transparent 42%); }
+  .hero__grid { position: absolute; inset: 0; z-index: -1; opacity: .23; background-image: linear-gradient(rgba(255,255,255,.13) 1px,transparent 1px), linear-gradient(90deg,rgba(255,255,255,.13) 1px,transparent 1px); background-size: 6.25vw 6.25vw; mask-image: linear-gradient(90deg,#000,transparent 78%); }
+  .hero__content { min-height: 100svh; padding-top: calc(var(--header-h) + 80px); padding-bottom: 70px; display: grid; grid-template-columns: minmax(0,780px) 1fr; align-items: center; position: relative; }
+  .hero__copy { transform: translateY(calc(var(--scroll, 0) * .06px)); }
+  .hero__eyebrow { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; font-size: 11px; }
+  .hero__eyebrow::before { content: ''; width: 45px; height: 4px; background: var(--primary); }
+  .hero h1 { margin: 0; max-width: 900px; overflow-wrap: anywhere; font-size: clamp(58px,7.7vw,124px); line-height: .79; letter-spacing: -.07em; font-weight: 950; text-transform: uppercase; text-shadow: 0 10px 34px rgba(0,0,0,.28); }
+  .hero h1 span { display: block; margin-left: clamp(0px,5vw,86px); margin-top: 12px; color: transparent; -webkit-text-stroke: 1px rgba(255,255,255,.72); font-size: .62em; letter-spacing: -.04em; }
+  .hero__desc { width: min(620px,100%); margin: 32px 0 0; padding-left: 20px; border-left: 3px solid var(--primary); color: rgba(255,255,255,.82); font-size: clamp(15px,1.25vw,19px); }
+  .hero__actions { display: flex; gap: 12px; margin-top: 34px; flex-wrap: wrap; }
+  .hero__side { align-self: end; justify-self: end; margin-bottom: 60px; width: 240px; display: grid; gap: 2px; }
+  .hero__datum { padding: 14px 16px; border: 1px solid rgba(255,255,255,.25); background: rgba(11,13,15,.36); backdrop-filter: blur(8px); display: flex; justify-content: space-between; gap: 18px; font-size: 10px; clip-path: polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%); }
+  .hero__datum b { color: var(--primary); }
+  .hero__stamp { position: absolute; right: 0; top: 27%; width: 148px; aspect-ratio: 1; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.42); border-radius: 50%; font-size: 9px; animation: rotate 16s linear infinite; }
+  .hero__stamp::before,.hero__stamp::after { content: ''; position: absolute; inset: 12px; border: 1px dashed rgba(244,246,0,.65); border-radius: 50%; }
+  .hero__stamp::after { inset: 44%; background: var(--primary); border: 0; }
+  .hero__index { position: absolute; left: 48px; bottom: 22px; display: flex; align-items: flex-end; gap: 12px; color: rgba(255,255,255,.7); font-size: 9px; }
+  .hero__index strong { color: #fff; font-size: 34px; line-height: 1; }
+  .scroll-cue { position: absolute; right: 48px; bottom: 20px; display: flex; align-items: center; gap: 12px; color: rgba(255,255,255,.7); font-size: 9px; writing-mode: vertical-rl; }
+  .scroll-cue i { width: 1px; height: 76px; overflow: hidden; position: relative; background: rgba(255,255,255,.28); }
+  .scroll-cue i::after { content: ''; position: absolute; inset: 0 0 auto; height: 24px; background: var(--primary); animation: scroll-cue 1.8s ease-in-out infinite; }
+
+  .home-btn { min-height: 52px; padding: 0 25px; border: 1px solid currentColor; border-radius: 0; display: inline-flex; gap: 13px; align-items: center; justify-content: center; background: transparent; color: inherit; text-decoration: none; cursor: pointer; font-weight: 750; position: relative; isolation: isolate; overflow: hidden; clip-path: polygon(0 0,calc(100% - 11px) 0,100% 11px,100% 100%,11px 100%,0 calc(100% - 11px)); transition: transform 180ms,box-shadow 180ms,color 180ms,border-color 180ms; }
+  .home-btn::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--primary); transform: translateX(-103%); transition: transform 280ms var(--ease); }
+  .home-btn:hover::before { transform: none; }
+  .home-btn:hover { color: var(--black); border-color: var(--black); transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--black); }
+  .home-btn--primary { background: var(--primary); color: var(--black); border-color: var(--black); box-shadow: 4px 4px 0 var(--black); }
+  .home-btn--primary::before { background: #fff; }
+  .home-btn--ghost { background: rgba(11,13,15,.26); color: #fff; backdrop-filter: blur(7px); }
+
+  .ticker { height: 44px; overflow: hidden; display: flex; align-items: center; border-block: 1px solid var(--black); background: var(--primary); color: var(--black); }
+  .ticker__track { display: flex; width: max-content; animation: marquee 26s linear infinite; }
+  .ticker__item { display: flex; align-items: center; gap: 22px; padding-right: 22px; white-space: nowrap; font-size: 11px; font-weight: 800; }
+  .ticker__item::after { content: '◆'; font-size: 8px; }
+
+  .home-section { position: relative; padding: 120px 0; overflow: hidden; border-top: 1px solid var(--line); }
+  .home-section--grid { background: linear-gradient(var(--grid-line) 1px,transparent 1px),linear-gradient(90deg,var(--grid-line) 1px,transparent 1px),var(--paper); background-size: 32px 32px; }
+  .section-watermark { position: absolute; top: 26px; right: -1vw; white-space: nowrap; color: var(--watermark); font-size: clamp(90px,16vw,260px); line-height: .8; font-weight: 900; letter-spacing: -.07em; pointer-events: none; }
+  .home-heading { display: grid; grid-template-columns: 130px 1fr auto; gap: 26px; align-items: end; margin-bottom: 55px; position: relative; z-index: 2; }
+  .home-heading__num { padding-bottom: 8px; border-bottom: 4px solid var(--primary); font-size: 12px; }
+  .home-heading h2 { margin: 0; font-size: clamp(40px,5vw,72px); line-height: .95; letter-spacing: -.045em; font-weight: 900; }
+  .home-heading p { max-width: 330px; margin: 0; color: var(--ink-soft); font-size: 13px; }
+  [data-reveal] { opacity: 0; transform: translateY(32px); transition: opacity 750ms var(--ease),transform 750ms var(--ease); }
+  [data-reveal='left'] { transform: translateX(-45px); }
+  [data-reveal='right'] { transform: translateX(45px); }
+  [data-reveal].is-visible { opacity: 1; transform: none; }
+  :global(html[data-home-boot='skip']) .hero [data-reveal] { opacity: 1; transform: none; }
+
+  .news-grid { display: grid; grid-template-columns: 1.35fr .825fr .825fr; gap: 20px; }
+  .news-card { min-height: 420px; position: relative; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--paper-surface); transition: border-color 300ms,transform 350ms var(--ease),box-shadow 350ms var(--ease); }
+  .news-card--feature { min-height: 490px; }
+  .news-card:hover { transform: translateY(-6px); border-color: var(--border-strong); box-shadow: 8px 8px 0 var(--border-strong); }
+  .news-card__visual { height: 260px; display: block; overflow: hidden; position: relative; background: #6d7778; }
+  .news-card--feature .news-card__visual { height: 305px; }
+  .news-card__visual::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg,transparent 45%,rgba(11,13,15,.58)); pointer-events: none; }
+  .news-card__visual img,.news-card__art { width: 100%; height: 100%; display: block; object-fit: cover; transition: transform 600ms var(--ease); }
+  .news-card:hover .news-card__visual img,.news-card:hover .news-card__art { transform: scale(1.08) rotate(.4deg); }
+  .news-card__art--1 { background: radial-gradient(circle at 69% 39%,#f3f6ef 0 6%,transparent 6.4%),linear-gradient(112deg,transparent 0 43%,#f4f600 43.5% 45%,transparent 45.5%),linear-gradient(155deg,#cfd4d1 0 38%,#6a7373 38.5% 62%,#202629 62.5%); }
+  .news-card__art--2 { background: repeating-linear-gradient(115deg,transparent 0 24px,rgba(244,246,0,.75) 25px 28px),radial-gradient(circle at 35% 42%,#bbc3c1 0 13%,transparent 13.5%),linear-gradient(145deg,#242a2d,#899292); }
+  .news-card__art--3 { background: linear-gradient(90deg,transparent 0 49%,rgba(255,255,255,.55) 49.4% 50%,transparent 50.3%),repeating-linear-gradient(0deg,transparent 0 18px,rgba(255,255,255,.14) 19px 20px),linear-gradient(130deg,#707b7c 0 45%,#252a2e 45.5%); }
+  .news-card__body { flex: 1; padding: 25px; position: relative; }
+  .news-card__tag { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 9px; }
+  .news-card__tag::before { content: ''; width: 28px; height: 4px; background: var(--primary); }
+  .news-card h3 { margin: 12px 50px 9px 0; font-size: clamp(21px,2vw,31px); line-height: 1.18; overflow-wrap: anywhere; }
+  .news-card h3 a { text-decoration: none; }
+  .news-card p { margin: 0 40px 0 0; color: var(--ink-soft); font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .news-card__arrow { position: absolute; right: 22px; bottom: 22px; width: 38px; height: 38px; border: 1px solid var(--border-strong); display: grid; place-items: center; text-decoration: none; transition: 250ms; }
+  .news-card:hover .news-card__arrow { background: var(--primary); color: var(--black); border-color: var(--black); transform: translate(3px,-3px); box-shadow: -3px 3px 0 var(--black); }
+  .home-empty { min-height: 320px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--paper-surface); color: var(--ink-soft); }
+  .section-action { margin-top: 48px; text-align: center; }
+
+  .world { height: 360vh; position: relative; background: var(--black); color: #fff; }
+  .world__sticky { height: 100vh; position: sticky; top: 0; overflow: hidden; }
+  .world__back { position: absolute; inset: 0; background: radial-gradient(circle at 70% 45%,rgba(244,246,0,.10),transparent 25%),linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px),#0b0d0f; background-size: auto,44px 44px,44px 44px; }
+  .world__back::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg,transparent 0 4px,rgba(255,255,255,.018) 4px 5px); animation: scan-move 8s linear infinite; }
+  .world__header { position: absolute; z-index: 4; top: calc(var(--header-h) + 30px); left: max(48px,calc((100vw - var(--container))/2)); max-width: 560px; pointer-events: none; }
+  .world__header span { color: var(--primary); font-size: 10px; }
+  .world__header h2 { margin: 8px 0 10px; font-size: clamp(46px,7vw,94px); line-height: .85; letter-spacing: -.055em; }
+  .world__header p { max-width: 430px; margin: 0; color: #aeb5b7; font-size: 13px; }
+  .world__track { position: absolute; left: 0; top: 0; height: 100%; display: flex; will-change: transform; }
+  .world-panel { flex: 0 0 100vw; height: 100%; display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 190px max(48px,calc((100vw - var(--container))/2)) 60px; }
+  .world-panel__art { height: min(58vh,600px); overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,.17); clip-path: polygon(0 0,calc(100% - 38px) 0,100% 38px,100% 100%,60px 100%,0 calc(100% - 60px)); }
+  .world-panel__art::before { content: ''; position: absolute; inset: -10%; background: var(--portal-art); transform: translate(calc(var(--mx, 0) * 10px),calc(var(--my, 0) * 8px)) scale(1.08); }
+  .world-panel__art::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg,transparent 55%,rgba(0,0,0,.72)),repeating-linear-gradient(90deg,transparent 0 62px,rgba(255,255,255,.05) 63px 64px); }
+  .portal-art--categories { --portal-art: linear-gradient(105deg,transparent 0 48%,#f4f600 48.2% 49%,transparent 49.2%),radial-gradient(ellipse at 56% 58%,#dce0dc 0 11%,transparent 11.4%),linear-gradient(145deg,#778183,#303638 45%,#14191b 45.5%); }
+  .portal-art--series { --portal-art: repeating-linear-gradient(116deg,transparent 0 55px,rgba(244,246,0,.24) 56px 58px),linear-gradient(18deg,transparent 0 54%,#272d30 54.2%),linear-gradient(135deg,#b8bfbd,#31383b 54%,#111517); }
+  .portal-art--archive { --portal-art: radial-gradient(circle at 67% 36%,rgba(244,246,0,.95) 0 2%,transparent 2.2%),repeating-radial-gradient(circle at 67% 36%,transparent 0 30px,rgba(255,255,255,.15) 31px 32px),linear-gradient(125deg,#697476,#181d20); }
+  .world-panel__copy { padding-left: clamp(45px,7vw,120px); max-width: 650px; }
+  .world-panel__no { color: var(--primary); font-size: 11px; }
+  .world-panel h3 { margin: 14px 0 24px; font-size: clamp(38px,5vw,72px); line-height: .92; letter-spacing: -.05em; }
+  .world-panel p { max-width: 540px; color: #b9c0c1; }
+  .world-panel__data { margin-top: 30px; display: grid; grid-template-columns: repeat(3,1fr); gap: 1px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.14); }
+  .world-panel__data div { min-height: 88px; padding: 15px; display: flex; flex-direction: column; background: #111517; }
+  .world-panel__data b { color: var(--primary); font-size: 25px; }
+  .world-panel__data span { margin-top: auto; color: #8f989a; font-size: 8px; }
+  .world-panel__action { margin-top: 24px; }
+  .world__progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: #252a2c; }
+  .world__progress i { display: block; width: 0; height: 100%; background: var(--primary); }
+
+  .systems-layout { display: grid; grid-template-columns: 1.05fr .95fr; min-height: 720px; border: 1px solid var(--line); background: var(--paper-surface); }
+  .systems-visual { min-height: 640px; overflow: hidden; position: relative; background: #151a1c; color: #fff; }
+  #radarCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .systems-visual__hud { position: absolute; inset: 28px; border: 1px solid rgba(255,255,255,.18); pointer-events: none; }
+  .systems-visual__hud::before,.systems-visual__hud::after { content: ''; position: absolute; background: var(--primary); }
+  .systems-visual__hud::before { width: 70px; height: 4px; left: -1px; top: -1px; }
+  .systems-visual__hud::after { width: 4px; height: 70px; right: -1px; bottom: -1px; }
+  .systems-copy { display: flex; flex-direction: column; min-width: 0; }
+  .system-tabs { display: flex; flex: 1; flex-direction: column; }
+  .system-tab { flex: 1; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; padding: 28px 38px; cursor: pointer; position: relative; transition: background 280ms; }
+  .system-tab::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--primary); transform: scaleY(0); transform-origin: top; transition: 300ms var(--ease); }
+  .system-tab.is-active,.system-tab:hover { background: var(--surface-2); }
+  .system-tab.is-active::before { transform: scaleY(1); }
+  .system-tab small,.system-tab p { color: var(--ink-soft); }
+  .system-tab h3 { margin: 7px 0; font-size: 28px; }
+  .system-tab p { margin: 0; max-width: 520px; font-size: 13px; }
+  .systems-action { padding: 24px 38px; border-top: 1px solid var(--line); }
+
+  .operators { background: var(--paper-muted); }
+  .operator-stage { display: grid; grid-template-columns: 320px 1fr; min-height: 720px; border-top: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
+  .operator-list { border-right: 1px solid var(--border-strong); background: var(--paper); }
+  .operator-btn { width: 100%; min-height: 116px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; padding: 20px 26px; cursor: pointer; display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 15px; transition: 250ms; }
+  .operator-btn.is-active { background: var(--primary); color: var(--black); }
+  .operator-btn__id { font-size: 12px; }
+  .operator-btn b { display: block; font-size: 20px; }
+  .operator-btn small { display: block; margin-top: 2px; color: currentColor; opacity: .65; font-size: 9px; }
+  .operator-main { min-width: 0; overflow: hidden; position: relative; background: linear-gradient(rgba(16,18,20,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(16,18,20,.06) 1px,transparent 1px),color-mix(in srgb,var(--paper-muted) 75%,#7f9299); background-size: 36px 36px; }
+  .operator-silhouette { position: absolute; left: 43%; top: 7%; width: 42%; height: 94%; transform: translateX(-50%); filter: drop-shadow(26px 24px 0 rgba(11,13,15,.15)); transition: clip-path 650ms var(--ease),background 400ms; background: linear-gradient(120deg,#f3f4ef 0 28%,#5e696b 28.5% 50%,#191f21 50.5% 72%,#f4f600 72.5%); clip-path: polygon(44% 0,58% 3%,67% 15%,65% 27%,77% 41%,73% 61%,89% 100%,50% 94%,12% 100%,27% 59%,23% 39%,36% 26%,33% 14%); }
+  .operator-silhouette::after { content: ''; position: absolute; inset: 30% 37% auto; height: 11%; background: #0b0d0f; clip-path: polygon(0 0,100% 22%,83% 100%,15% 92%); }
+  .operator-main[data-op='2'] .operator-silhouette { background: linear-gradient(110deg,#e9ece6 0 31%,#859092 31.5% 55%,#14191b 55.5% 83%,#f4f600 83.5%); clip-path: polygon(33% 0,65% 8%,69% 26%,82% 44%,75% 65%,94% 100%,55% 92%,6% 100%,25% 63%,18% 38%,31% 22%); }
+  .operator-main[data-op='3'] .operator-silhouette { background: linear-gradient(125deg,#f4f600 0 12%,#d8dcd8 12.5% 43%,#4d585a 43.5% 65%,#111719 65.5%); clip-path: polygon(43% 0,60% 7%,62% 23%,79% 39%,71% 59%,88% 100%,52% 93%,17% 100%,28% 58%,22% 37%,37% 22%); }
+  .operator-copy { position: absolute; right: 6%; top: 50%; width: 34%; transform: translateY(-50%); }
+  .operator-copy__role { color: var(--ink-soft); font-size: 10px; }
+  .operator-copy h3 { margin: 8px 0 18px; overflow-wrap: anywhere; font-size: clamp(45px,6vw,85px); line-height: .86; letter-spacing: -.06em; }
+  .operator-copy p { color: var(--ink-soft); font-size: 13px; }
+  .operator-copy .home-btn { margin-top: 18px; }
+  .operator-code { position: absolute; left: 24px; bottom: 22px; font-size: 9px; writing-mode: vertical-rl; }
+
+  .final-cta { min-height: 78vh; display: grid; place-items: center; overflow: hidden; position: relative; background: #111517; color: #fff; text-align: center; }
+  .final-cta::before { content: ''; position: absolute; width: min(86vw,1050px); aspect-ratio: 1; border: 1px solid rgba(255,255,255,.09); border-radius: 50%; box-shadow: 0 0 0 70px rgba(255,255,255,.02),0 0 0 140px rgba(255,255,255,.015); animation: rotate 38s linear infinite; }
+  .final-cta::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg,transparent 0 49.8%,rgba(244,246,0,.3) 50%,transparent 50.2%),repeating-linear-gradient(90deg,transparent 0 80px,rgba(255,255,255,.025) 81px); }
+  .final-cta__inner { position: relative; z-index: 2; padding: 90px 20px; }
+  .final-cta__inner small { color: var(--primary); }
+  .final-cta h2 { margin: 18px 0 30px; white-space: pre-line; font-size: clamp(48px,8vw,115px); line-height: .84; letter-spacing: -.065em; }
+  .final-cta p { max-width: 620px; margin: 0 auto 36px; color: #bfc3c3; }
+
+  .protocol-modal { position: fixed; inset: 0; z-index: 5000; display: grid; place-items: center; opacity: 0; visibility: hidden; background: rgba(0,0,0,.82); backdrop-filter: blur(14px); transition: opacity 350ms,visibility 0s linear 350ms; }
+  .protocol-modal.is-open { opacity: 1; visibility: visible; transition-delay: 0s; }
+  .protocol-modal__box { width: min(1080px,calc(100vw - 36px)); aspect-ratio: 16/9; overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,.35); background: #111517; color: #fff; clip-path: polygon(0 0,calc(100% - 30px) 0,100% 30px,100% 100%,30px 100%,0 calc(100% - 30px)); }
+  .protocol-modal__visual { position: absolute; inset: 0; background: radial-gradient(circle at 70% 38%,rgba(244,246,0,.6),transparent 5%),repeating-radial-gradient(circle at 70% 38%,transparent 0 42px,rgba(244,246,0,.12) 43px 44px),linear-gradient(135deg,#818b8c,#1c2224 58%,#080a0b); animation: modal-pulse 4s ease-in-out infinite; }
+  .protocol-modal__visual::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg,transparent 0 4px,rgba(255,255,255,.03) 4px 5px); animation: scan-move 5s linear infinite; }
+  .protocol-modal__copy { position: absolute; z-index: 2; inset: 12% 8%; width: 58%; }
+  .protocol-modal__copy > .mono { color: var(--primary); font-size: 10px; }
+  .protocol-modal__copy h2 { margin: 12px 0 18px; font-size: clamp(38px,5vw,72px); line-height: .92; }
+  .protocol-modal__copy p { max-width: 600px; color: #c6cbcb; }
+  .protocol-modal__close { position: absolute; z-index: 3; right: 0; top: 0; width: 58px; height: 58px; border: 0; background: var(--primary); color: var(--black); cursor: pointer; font-size: 25px; }
+  .protocol-modal__stats { display: flex; gap: 1px; margin: 28px 0; background: rgba(255,255,255,.15); }
+  .protocol-modal__stats span { min-width: 120px; padding: 12px; display: flex; flex-direction: column; background: rgba(11,13,15,.78); color: #aeb5b7; font-size: 8px; }
+  .protocol-modal__stats b { color: var(--primary); font-size: 22px; }
+  .protocol-modal__links { display: flex; gap: 12px; }
+  .protocol-modal__timeline { position: absolute; left: 7%; right: 7%; bottom: 5%; height: 2px; background: rgba(255,255,255,.2); }
+  .protocol-modal__timeline::after { content: ''; display: block; width: 0; height: 100%; background: var(--primary); animation: fake-play 8s linear infinite; }
+
+  @keyframes marquee { to { transform: translateX(-50%); } }
+  @keyframes scan-move { to { background-position: 0 40px; } }
+  @keyframes rotate { to { transform: rotate(360deg); } }
+  @keyframes scroll-cue { 0% { transform: translateY(-100%); } 50%,100% { transform: translateY(320%); } }
+  @keyframes boot-glyph { 50% { transform: rotate(45deg) scale(.86); } }
+  @keyframes modal-pulse { 50% { filter: brightness(1.2) contrast(1.08); transform: scale(1.03); } }
+  @keyframes fake-play { to { width: 100%; } }
+
+  @media (max-width: 1100px) {
+    .news-grid { grid-template-columns: 1fr 1fr; }
+    .news-card--feature { grid-column: 1/-1; }
+    .world-panel { grid-template-columns: 1.12fr .88fr; }
+    .world-panel__copy { padding-left: 45px; }
+    .operator-stage { grid-template-columns: 260px 1fr; }
   }
 
-  .hero__content {
-    display: grid;
-    grid-template-columns: minmax(0, 760px) auto;
-    align-items: center;
-    gap: var(--space-10);
-    padding: var(--space-20) 0;
+  @media (max-width: 820px) {
+    .hero__content { padding-top: 110px; grid-template-columns: 1fr; align-content: center; }
+    .hero h1 { font-size: clamp(52px,15vw,84px); }
+    .hero h1 span { margin-left: 0; }
+    .hero__desc { font-size: 15px; }
+    .hero__side,.hero__stamp { display: none; }
+    .hero__index { left: 20px; }
+    .scroll-cue { right: 20px; }
+    .home-section { padding: 72px 0; }
+    .home-heading { grid-template-columns: 70px 1fr; margin-bottom: 36px; }
+    .home-heading p { grid-column: 2; }
+    .news-grid { grid-template-columns: 1fr; }
+    .news-card--feature { grid-column: auto; }
+    .news-card,.news-card--feature { min-height: 430px; }
+    .news-card__visual,.news-card--feature .news-card__visual { height: 260px; }
+    .world { height: auto; }
+    .world__sticky { height: auto; position: relative; }
+    .world__header { position: relative; top: auto; left: auto; padding: 80px 20px 20px; pointer-events: auto; }
+    .world__track { position: relative; display: block; transform: none !important; }
+    .world-panel { width: 100%; height: auto; min-height: 100vh; grid-template-columns: 1fr; padding: 45px 20px 80px; gap: 35px; border-top: 1px solid #2c3133; }
+    .world-panel__art { height: 50vh; order: 2; }
+    .world-panel__copy { padding: 0; order: 1; }
+    .world__progress { display: none; }
+    .systems-layout { grid-template-columns: 1fr; }
+    .systems-visual { min-height: 520px; }
+    .operator-stage { grid-template-columns: 1fr; min-height: 820px; }
+    .operator-list { display: flex; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border-strong); }
+    .operator-btn { min-width: 210px; min-height: 90px; border-right: 1px solid var(--line); }
+    .operator-main { min-height: 700px; }
+    .operator-silhouette { left: 43%; width: 70%; }
+    .operator-copy { right: 20px; top: auto; bottom: 45px; width: 58%; padding: 18px; transform: none; background: color-mix(in srgb,var(--paper) 82%,transparent); backdrop-filter: blur(8px); }
+    .protocol-modal__box { min-height: min(720px,calc(100svh - 36px)); aspect-ratio: auto; }
+    .protocol-modal__copy { inset: 12% 8%; width: 78%; }
   }
 
-  .hero__eyebrow {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.75);
-    margin-bottom: var(--space-5);
+  @media (max-width: 520px) {
+    .hero__actions .home-btn { width: 100%; }
+    .home-heading { grid-template-columns: 1fr; gap: 12px; }
+    .home-heading__num,.home-heading p { grid-column: auto; }
+    .home-heading__num { width: 78px; }
+    .world-panel__data { grid-template-columns: 1fr; }
+    .systems-visual { min-height: 430px; }
+    .system-tab { padding: 24px 22px; }
+    .systems-action { padding: 22px; }
+    .operator-main { min-height: 620px; }
+    .operator-silhouette { width: 92%; left: 40%; }
+    .operator-copy { width: 78%; right: 12px; bottom: 24px; }
+    .operator-copy h3 { font-size: 42px; }
+    .protocol-modal__copy { width: auto; right: 8%; }
+    .protocol-modal__stats { flex-direction: column; }
+    .protocol-modal__links { flex-direction: column; align-items: stretch; }
   }
 
-  .hero__eyebrow::before {
-    content: '';
-    width: 42px;
-    height: 4px;
-    background: var(--primary);
-  }
-
-  .hero__title {
-    margin: 0;
-    font-size: clamp(46px, 7vw, 96px);
-    line-height: 0.92;
-    font-weight: 900;
-    letter-spacing: -0.05em;
-    text-transform: uppercase;
-  }
-
-  .hero__title span {
-    display: block;
-    margin-top: 8px;
-    margin-left: clamp(0px, 4vw, 64px);
-    color: transparent;
-    -webkit-text-stroke: 1px rgba(255, 255, 255, 0.65);
-    font-family: var(--font-display);
-    font-size: 0.5em;
-    letter-spacing: 0.02em;
-  }
-
-  .hero__desc {
-    width: min(560px, 100%);
-    margin: var(--space-8) 0 0;
-    padding-left: var(--space-5);
-    border-left: 3px solid var(--primary);
-    font-size: clamp(15px, 1.2vw, 18px);
-    color: rgba(255, 255, 255, 0.82);
-  }
-
-  .hero__actions {
-    display: flex;
-    gap: var(--space-3);
-    margin-top: var(--space-8);
-    flex-wrap: wrap;
-  }
-
-  .hero__btn-ghost {
-    border-color: rgba(255, 255, 255, 0.72);
-    background: rgba(11, 13, 15, 0.35);
-    color: #f7f7f2;
-    backdrop-filter: blur(7px);
-  }
-
-  .hero__btn-ghost:hover {
-    border-color: var(--primary);
-    background: rgba(11, 13, 15, 0.35);
-    color: var(--primary);
-  }
-
-  .hero__side {
-    display: grid;
-    gap: 2px;
-    width: 230px;
-  }
-
-  .hero__datum {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 13px 15px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    background: rgba(11, 13, 15, 0.36);
-    backdrop-filter: blur(8px);
-    font-size: 10px;
-    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
-  }
-
-  .hero__datum b {
-    color: var(--primary);
-    font-size: 13px;
-  }
-
-  .hero__index {
-    position: absolute;
-    left: max(24px, calc((100vw - var(--container)) / 2));
-    bottom: 20px;
-    display: flex;
-    align-items: flex-end;
-    gap: var(--space-3);
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 9px;
-  }
-
-  .hero__index strong {
-    font-size: 30px;
-    color: #fff;
-    line-height: 1;
-  }
-
-  .scroll-cue {
-    position: absolute;
-    right: max(24px, calc((100vw - var(--container)) / 2));
-    bottom: 18px;
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 9px;
-    writing-mode: vertical-rl;
-  }
-
-  .scroll-cue i {
-    width: 1px;
-    height: 64px;
-    background: rgba(255, 255, 255, 0.28);
-    position: relative;
-    overflow: hidden;
-  }
-
-  .scroll-cue i::after {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto;
-    height: 22px;
-    background: var(--primary);
-    animation: scroll-cue 1.8s ease-in-out infinite;
-  }
-
-  @keyframes scroll-cue {
-    0% {
-      transform: translateY(-100%);
-    }
-    50%,
-    100% {
-      transform: translateY(320%);
-    }
-  }
-
-  /* ---- 最新文章 ---- */
-  .section {
-    position: relative;
-    padding: var(--space-24) 0;
-    overflow: hidden;
-  }
-
-  .home-heading {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: var(--space-6);
-    align-items: end;
-    margin-bottom: var(--space-12);
-    position: relative;
-    z-index: 1;
-  }
-
-  .home-heading__num {
-    font-size: 12px;
-    padding-bottom: 8px;
-    border-bottom: 4px solid var(--primary);
-    color: var(--text-2);
-  }
-
-  .home-heading__title {
-    margin: 0;
-    font-size: clamp(32px, 4.5vw, 56px);
-    line-height: 0.95;
-    letter-spacing: -0.04em;
-    font-weight: 900;
-  }
-
-  .home-heading__meta {
-    max-width: 300px;
-    margin: 0;
-    font-size: 13px;
-    color: var(--text-2);
-  }
-
-  .home-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-5);
-  }
-
-  .home-grid__feature {
-    grid-column: span 2;
-    grid-row: span 1;
-  }
-
-  .home-grid__feature :global(.post-card__title) {
-    font-size: clamp(22px, 2.6vw, 30px);
-  }
-
-  .home-more {
-    margin-top: var(--space-12);
-    text-align: center;
-  }
-
-  @media (max-width: 1023px) {
-    .home-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .home-grid__feature {
-      grid-column: span 2;
-    }
-    .hero__content {
-      grid-template-columns: 1fr;
-    }
-    .hero__side {
-      display: none;
-    }
-  }
-
-  @media (max-width: 639px) {
-    .home-grid {
-      grid-template-columns: 1fr;
-      gap: var(--space-4);
-    }
-    .home-grid__feature {
-      grid-column: span 1;
-    }
-    .home-heading {
-      grid-template-columns: 1fr;
-      gap: var(--space-3);
-    }
-    .hero__index,
-    .scroll-cue {
-      display: none;
-    }
+  @media (prefers-reduced-motion: reduce) {
+    .home-interface *, .home-interface *::before, .home-interface *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+    .home-boot,.home-cursor { display: none !important; }
+    [data-reveal] { opacity: 1 !important; transform: none !important; }
+    .world { height: auto; }
+    .world__sticky { height: auto; position: relative; }
+    .world__header { position: relative; top: auto; left: auto; padding: 90px max(24px,calc((100vw - var(--container))/2)) 20px; }
+    .world__track { position: relative; display: block; transform: none !important; }
+    .world-panel { min-height: 100vh; }
+    .world__progress { display: none; }
   }
 </style>
+
+<script>
+  (() => {
+    const home = document.getElementById('homeInterface');
+    if (!home) return;
+
+    const root = document.documentElement;
+    const body = document.body;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const boot = document.getElementById('homeBoot');
+    const bootFill = document.getElementById('homeBootFill') as HTMLElement | null;
+    const bootCount = document.getElementById('homeBootCount');
+
+    const revealInitial = () => {
+      home.querySelectorAll<HTMLElement>('.hero [data-reveal]').forEach((element, index) => {
+        setTimeout(() => element.classList.add('is-visible'), reduced ? 0 : index * 125);
+      });
+    };
+
+    if (!reduced && root.dataset.homeBoot === 'play' && boot && bootFill && bootCount) {
+      let value = 0;
+      const tick = () => {
+        value += Math.max(1, Math.round((101 - value) * 0.075));
+        value = Math.min(value, 100);
+        bootFill.style.width = `${value}%`;
+        bootCount.textContent = `${String(value).padStart(3, '0')}%`;
+        if (value < 100) {
+          requestAnimationFrame(tick);
+        } else {
+          setTimeout(() => {
+            boot.classList.add('is-done');
+            root.dataset.homeBoot = 'done';
+            try { sessionStorage.setItem('sb-home-booted', '1'); } catch (_) {}
+            revealInitial();
+          }, 320);
+        }
+      };
+      setTimeout(tick, 180);
+    } else {
+      root.dataset.homeBoot = 'skip';
+      revealInitial();
+    }
+
+    const revealElements = home.querySelectorAll<HTMLElement>('main [data-reveal], [data-reveal]');
+    if (reduced || !('IntersectionObserver' in window)) {
+      revealElements.forEach((element) => element.classList.add('is-visible'));
+    } else {
+      const revealObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          (entry.target as HTMLElement).classList.add('is-visible');
+          revealObserver.unobserve(entry.target);
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -7%' });
+      revealElements.forEach((element) => {
+        if (!element.closest('.hero')) revealObserver.observe(element);
+      });
+    }
+
+    const pointerFine = matchMedia('(hover: hover) and (pointer: fine)').matches;
+    const dot = document.getElementById('homeCursorDot') as HTMLElement | null;
+    const ring = document.getElementById('homeCursorRing') as HTMLElement | null;
+    let pointerX = innerWidth / 2;
+    let pointerY = innerHeight / 2;
+    let ringX = pointerX;
+    let ringY = pointerY;
+    if (pointerFine && !reduced && dot && ring) {
+      addEventListener('pointermove', (event) => {
+        pointerX = event.clientX;
+        pointerY = event.clientY;
+        root.style.setProperty('--mx', (((event.clientX / innerWidth) - 0.5)).toFixed(3));
+        root.style.setProperty('--my', (((event.clientY / innerHeight) - 0.5)).toFixed(3));
+        dot.style.left = `${pointerX}px`;
+        dot.style.top = `${pointerY}px`;
+      }, { passive: true });
+      const cursorLoop = () => {
+        ringX += (pointerX - ringX) * 0.14;
+        ringY += (pointerY - ringY) * 0.14;
+        ring.style.left = `${ringX}px`;
+        ring.style.top = `${ringY}px`;
+        requestAnimationFrame(cursorLoop);
+      };
+      cursorLoop();
+      home.querySelectorAll('a,button,.interactive').forEach((element) => {
+        element.addEventListener('mouseenter', () => ring.classList.add('is-active'));
+        element.addEventListener('mouseleave', () => ring.classList.remove('is-active'));
+      });
+    }
+
+    const world = document.getElementById('home-world');
+    const worldTrack = document.getElementById('worldTrack') as HTMLElement | null;
+    const worldProgress = document.getElementById('worldProgress') as HTMLElement | null;
+    const updateWorld = () => {
+      root.style.setProperty('--scroll', scrollY.toFixed(1));
+      if (!world || !worldTrack || !worldProgress || innerWidth <= 820 || reduced) {
+        if (worldTrack) worldTrack.style.transform = 'none';
+        return;
+      }
+      const rect = world.getBoundingClientRect();
+      const available = world.offsetHeight - innerHeight;
+      const progress = Math.min(1, Math.max(0, -rect.top / available));
+      worldTrack.style.transform = `translate3d(${-progress * 200}vw,0,0)`;
+      worldProgress.style.width = `${progress * 100}%`;
+    };
+    addEventListener('scroll', updateWorld, { passive: true });
+    addEventListener('resize', updateWorld, { passive: true });
+    updateWorld();
+
+    const counters = home.querySelectorAll<HTMLElement>('.counter');
+    if (reduced || !('IntersectionObserver' in window)) {
+      counters.forEach((counter) => { counter.textContent = counter.dataset.value || '0'; });
+    } else {
+      const counterObserver = new IntersectionObserver((entries) => entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const element = entry.target as HTMLElement;
+        const target = Number(element.dataset.value || 0);
+        const start = performance.now();
+        const animate = (now: number) => {
+          const progress = Math.min(1, (now - start) / 1100);
+          element.textContent = String(Math.round(target * (1 - Math.pow(1 - progress, 3))));
+          if (progress < 1) requestAnimationFrame(animate);
+        };
+        requestAnimationFrame(animate);
+        counterObserver.unobserve(element);
+      }), { threshold: 0.5 });
+      counters.forEach((counter) => counterObserver.observe(counter));
+    }
+
+    const heroCanvas = document.getElementById('heroCanvas') as HTMLCanvasElement | null;
+    const heroContext = heroCanvas?.getContext('2d');
+    let heroWidth = 0;
+    let heroHeight = 0;
+    let heroVisible = true;
+    let particles: Array<{ x: number; y: number; vx: number; vy: number; r: number }> = [];
+    const resizeHero = () => {
+      if (!heroCanvas || !heroContext) return;
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      heroWidth = heroCanvas.clientWidth;
+      heroHeight = heroCanvas.clientHeight;
+      heroCanvas.width = heroWidth * dpr;
+      heroCanvas.height = heroHeight * dpr;
+      heroContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+      particles = Array.from({ length: Math.min(80, Math.floor(heroWidth / 18)) }, () => ({
+        x: Math.random() * heroWidth,
+        y: Math.random() * heroHeight,
+        vx: (Math.random() - 0.5) * 0.15,
+        vy: (Math.random() - 0.5) * 0.15,
+        r: Math.random() * 1.4 + 0.35,
+      }));
+    };
+    const drawHero = () => {
+      if (!heroContext || !heroCanvas || reduced) return;
+      heroContext.clearRect(0, 0, heroWidth, heroHeight);
+      if (heroVisible && !document.hidden) {
+        heroContext.strokeStyle = 'rgba(244,246,0,.12)';
+        heroContext.lineWidth = 0.65;
+        particles.forEach((particle, index) => {
+          particle.x += particle.vx;
+          particle.y += particle.vy;
+          if (particle.x < 0 || particle.x > heroWidth) particle.vx *= -1;
+          if (particle.y < 0 || particle.y > heroHeight) particle.vy *= -1;
+          heroContext.fillStyle = 'rgba(244,246,0,.42)';
+          heroContext.beginPath();
+          heroContext.arc(particle.x, particle.y, particle.r, 0, Math.PI * 2);
+          heroContext.fill();
+          for (let next = index + 1; next < particles.length; next += 1) {
+            const other = particles[next];
+            const distance = Math.hypot(particle.x - other.x, particle.y - other.y);
+            if (distance < 115) {
+              heroContext.globalAlpha = (1 - distance / 115) * 0.45;
+              heroContext.beginPath();
+              heroContext.moveTo(particle.x, particle.y);
+              heroContext.lineTo(other.x, other.y);
+              heroContext.stroke();
+              heroContext.globalAlpha = 1;
+            }
+          }
+        });
+      }
+      requestAnimationFrame(drawHero);
+    };
+    if (heroCanvas && heroContext && !reduced) {
+      resizeHero();
+      drawHero();
+      addEventListener('resize', resizeHero, { passive: true });
+      new IntersectionObserver(([entry]) => { heroVisible = entry.isIntersecting; }).observe(heroCanvas);
+    }
+
+    const radarCanvas = document.getElementById('radarCanvas') as HTMLCanvasElement | null;
+    const radarContext = radarCanvas?.getContext('2d');
+    let radarWidth = 0;
+    let radarHeight = 0;
+    let radarMode = 'network';
+    let radarVisible = true;
+    const radarNodes = Array.from({ length: 16 }, (_, index) => ({
+      angle: Math.random() * Math.PI * 2,
+      radius: 0.12 + Math.random() * 0.35,
+      speed: 0.15 + Math.random() * 0.25,
+      phase: index % 3,
+    }));
+    const resizeRadar = () => {
+      if (!radarCanvas || !radarContext) return;
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      radarWidth = radarCanvas.clientWidth;
+      radarHeight = radarCanvas.clientHeight;
+      radarCanvas.width = radarWidth * dpr;
+      radarCanvas.height = radarHeight * dpr;
+      radarContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    const drawRadar = (stamp = 0) => {
+      if (!radarCanvas || !radarContext || reduced) return;
+      const time = stamp * 0.0003;
+      radarContext.clearRect(0, 0, radarWidth, radarHeight);
+      radarContext.fillStyle = '#151a1c';
+      radarContext.fillRect(0, 0, radarWidth, radarHeight);
+      if (radarVisible && !document.hidden) {
+        const centerX = radarWidth * 0.5;
+        const centerY = radarHeight * 0.5;
+        const radius = Math.min(radarWidth, radarHeight) * 0.37;
+        radarContext.strokeStyle = 'rgba(255,255,255,.1)';
+        radarContext.lineWidth = 1;
+        for (let ringIndex = 1; ringIndex <= 5; ringIndex += 1) {
+          radarContext.beginPath();
+          radarContext.arc(centerX, centerY, radius * ringIndex / 5, 0, Math.PI * 2);
+          radarContext.stroke();
+        }
+        for (let ray = 0; ray < 12; ray += 1) {
+          const angle = ray * Math.PI / 6;
+          radarContext.beginPath();
+          radarContext.moveTo(centerX, centerY);
+          radarContext.lineTo(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius);
+          radarContext.stroke();
+        }
+        const sweep = time % (Math.PI * 2);
+        const gradient = radarContext.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+        gradient.addColorStop(0, 'rgba(244,246,0,.18)');
+        gradient.addColorStop(1, 'rgba(244,246,0,0)');
+        radarContext.save();
+        radarContext.translate(centerX, centerY);
+        radarContext.rotate(sweep);
+        radarContext.beginPath();
+        radarContext.moveTo(0, 0);
+        radarContext.arc(0, 0, radius, -0.18, 0);
+        radarContext.closePath();
+        radarContext.fillStyle = gradient;
+        radarContext.fill();
+        radarContext.strokeStyle = 'rgba(244,246,0,.72)';
+        radarContext.beginPath();
+        radarContext.moveTo(0, 0);
+        radarContext.lineTo(radius, 0);
+        radarContext.stroke();
+        radarContext.restore();
+        const points = radarNodes.map((node) => ({
+          x: centerX + Math.cos(node.angle + time * node.speed) * radius * node.radius * 2,
+          y: centerY + Math.sin(node.angle + time * node.speed) * radius * node.radius * 2,
+          phase: node.phase,
+        }));
+        if (radarMode !== 'scan') {
+          radarContext.strokeStyle = radarMode === 'taxonomy' ? 'rgba(255,255,255,.18)' : 'rgba(244,246,0,.18)';
+          for (let from = 0; from < points.length; from += 1) for (let to = from + 1; to < points.length; to += 1) {
+            const distance = Math.hypot(points[from].x - points[to].x, points[from].y - points[to].y);
+            const threshold = radarMode === 'taxonomy' ? 160 : 120;
+            if (distance < threshold) {
+              radarContext.globalAlpha = 1 - distance / 180;
+              radarContext.beginPath();
+              radarContext.moveTo(points[from].x, points[from].y);
+              radarContext.lineTo(points[to].x, points[to].y);
+              radarContext.stroke();
+            }
+          }
+          radarContext.globalAlpha = 1;
+        }
+        points.forEach((point, index) => {
+          const active = Math.abs(Math.atan2(point.y - centerY, point.x - centerX) - sweep) < 0.08;
+          radarContext.fillStyle = active || index % 4 === 0 ? '#f4f600' : 'rgba(255,255,255,.6)';
+          radarContext.fillRect(point.x - 2, point.y - 2, active ? 7 : 4, active ? 7 : 4);
+        });
+        radarContext.fillStyle = 'rgba(255,255,255,.55)';
+        radarContext.font = '10px monospace';
+        radarContext.fillText(`SALTEDBLOG / ${radarMode.toUpperCase()}`, 28, 38);
+        radarContext.fillText(`SIGNAL ${String(Math.floor((Math.sin(time) * 0.5 + 0.5) * 99)).padStart(2, '0')}%`, 28, radarHeight - 30);
+      }
+      requestAnimationFrame(drawRadar);
+    };
+    if (radarCanvas && radarContext && !reduced) {
+      resizeRadar();
+      requestAnimationFrame(drawRadar);
+      addEventListener('resize', resizeRadar, { passive: true });
+      new IntersectionObserver(([entry]) => { radarVisible = entry.isIntersecting; }).observe(radarCanvas);
+    }
+
+    const systemAction = document.getElementById('systemAction') as HTMLAnchorElement | null;
+    home.querySelectorAll<HTMLButtonElement>('.system-tab').forEach((tab) => tab.addEventListener('click', () => {
+      home.querySelectorAll<HTMLButtonElement>('.system-tab').forEach((item) => {
+        const selected = item === tab;
+        item.classList.toggle('is-active', selected);
+        item.setAttribute('aria-selected', String(selected));
+      });
+      radarMode = tab.dataset.mode || 'network';
+      if (systemAction) {
+        systemAction.href = tab.dataset.actionHref || '#';
+        systemAction.textContent = `${tab.dataset.actionLabel || ''} ↗`;
+      }
+    }));
+
+    const operatorMain = document.getElementById('operatorMain') as HTMLElement | null;
+    const operatorName = document.getElementById('operatorName');
+    const operatorRole = document.getElementById('operatorRole');
+    const operatorDesc = document.getElementById('operatorDesc');
+    const operatorAction = document.getElementById('operatorAction') as HTMLAnchorElement | null;
+    home.querySelectorAll<HTMLButtonElement>('.operator-btn').forEach((button) => button.addEventListener('click', () => {
+      home.querySelectorAll<HTMLButtonElement>('.operator-btn').forEach((item) => {
+        const selected = item === button;
+        item.classList.toggle('is-active', selected);
+        item.setAttribute('aria-selected', String(selected));
+      });
+      operatorMain?.animate(
+        [{ opacity: 0.45, transform: 'translateX(14px)' }, { opacity: 1, transform: 'none' }],
+        { duration: reduced ? 1 : 420, easing: 'cubic-bezier(.2,.8,.2,1)' },
+      );
+      if (operatorMain) operatorMain.dataset.op = button.dataset.op || '1';
+      if (operatorName) operatorName.textContent = button.dataset.name || '';
+      if (operatorRole) operatorRole.textContent = button.dataset.role || '';
+      if (operatorDesc) operatorDesc.textContent = button.dataset.desc || '';
+      if (operatorAction) {
+        operatorAction.href = button.dataset.href || '#';
+        operatorAction.textContent = `${button.dataset.action || ''} ↗`;
+      }
+    }));
+
+    const modal = document.getElementById('protocolModal');
+    const modalClose = document.getElementById('protocolClose') as HTMLButtonElement | null;
+    let modalOpener: HTMLElement | null = null;
+    const modalFocusables = () => Array.from(modal?.querySelectorAll<HTMLElement>('button,a[href]') || []);
+    const openModal = (opener: HTMLElement) => {
+      if (!modal) return;
+      modalOpener = opener;
+      modal.classList.add('is-open');
+      modal.setAttribute('aria-hidden', 'false');
+      body.classList.add('is-locked');
+      requestAnimationFrame(() => modalClose?.focus({ preventScroll: true }));
+    };
+    const closeModal = () => {
+      if (!modal?.classList.contains('is-open')) return;
+      modal.classList.remove('is-open');
+      modal.setAttribute('aria-hidden', 'true');
+      body.classList.remove('is-locked');
+      modalOpener?.focus();
+    };
+    home.querySelectorAll<HTMLElement>('[data-open-protocol]').forEach((button) => button.addEventListener('click', () => openModal(button)));
+    modalClose?.addEventListener('click', closeModal);
+    modal?.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
+    addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeModal();
+      if (event.key !== 'Tab' || !modal?.classList.contains('is-open')) return;
+      const focusables = modalFocusables();
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
+    modal?.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => {
+      body.classList.remove('is-locked');
+    }));
+  })();
+</script>

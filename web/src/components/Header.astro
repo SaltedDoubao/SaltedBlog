@@ -7,9 +7,10 @@ interface Props {
   /** 语言切换的目标地址（如文章页的翻译版本）；缺省按规则映射 */
   altPath?: string;
   siteTitle: string;
+  variant?: 'default' | 'home';
 }
 
-const { lang, pathname, altPath, siteTitle } = Astro.props;
+const { lang, pathname, altPath, siteTitle, variant = 'default' } = Astro.props;
 
 const navItems = [
   { index: '00', href: localePath(lang, '/'), label: t(lang, 'nav.home'), exact: true },
@@ -29,7 +30,11 @@ const langTarget = altPath ?? altLangPath(lang, pathname);
 const langLabel = lang === 'zh' ? 'EN' : '中';
 ---
 
-<header class="site-header" id="siteHeader">
+<header
+  class:list={['site-header', { 'site-header--home': variant === 'home' }]}
+  id="siteHeader"
+  data-variant={variant}
+>
   <a class="brand" href={localePath(lang, '/')} aria-label={siteTitle}>
     <span class="brand__icon" aria-hidden="true"></span>
     <span class="brand__name">
@@ -107,6 +112,31 @@ const langLabel = lang === 'zh' ? 'EN' : '中';
     -webkit-backdrop-filter: blur(12px);
   }
 
+  .site-header--home {
+    position: fixed;
+    inset: 0 0 auto;
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.18);
+    background: rgba(11, 13, 15, 0.18);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    transition:
+      color 300ms var(--ease),
+      background 300ms var(--ease),
+      border-color 300ms var(--ease),
+      box-shadow 300ms var(--ease),
+      transform var(--duration-slow) var(--ease);
+  }
+
+  .site-header--home.is-scrolled {
+    color: var(--text);
+    border-color: var(--border-subtle);
+    background: color-mix(in srgb, var(--bg) 91%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 8px 28px rgba(11, 13, 15, 0.08);
+  }
+
   .brand {
     display: flex;
     align-items: center;
@@ -155,6 +185,15 @@ const langLabel = lang === 'zh' ? 'EN' : '中';
     font-weight: 500;
     text-decoration: none;
     color: var(--text);
+  }
+
+  .site-header--home:not(.is-scrolled) .nav a,
+  .site-header--home:not(.is-scrolled) .icon-btn {
+    color: #fff;
+  }
+
+  .site-header--home:not(.is-scrolled) .brand__name small {
+    color: rgba(255, 255, 255, 0.62);
   }
 
   .nav a::before {
@@ -356,4 +395,15 @@ const langLabel = lang === 'zh' ? 'EN' : '中';
       'https://giscus.app'
     );
   });
+
+  // 首页页头覆盖首屏，并在越过首屏主体后切换为主题表面色。
+  const siteHeader = document.getElementById('siteHeader');
+  if (siteHeader?.dataset.variant === 'home') {
+    const updateHomeHeader = () => {
+      siteHeader.classList.toggle('is-scrolled', scrollY > innerHeight * 0.68);
+    };
+    addEventListener('scroll', updateHomeHeader, { passive: true });
+    addEventListener('resize', updateHomeHeader, { passive: true });
+    updateHomeHeader();
+  }
 </script>

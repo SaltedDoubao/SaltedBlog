@@ -11,6 +11,8 @@ import { altLangPath, type Lang } from '@/i18n';
 
 interface Props {
   lang: Lang;
+  /** 首页使用沉浸式固定页头与独立动效作用域 */
+  variant?: 'default' | 'home';
   title?: string;
   description?: string;
   /** 语言切换目标（如文章页对应翻译的 URL） */
@@ -25,6 +27,7 @@ interface Props {
 
 const {
   lang,
+  variant = 'default',
   title,
   description,
   altPath = null,
@@ -97,13 +100,29 @@ const ogImageAbs = ogImage && siteUrl && ogImage.startsWith('/') ? `${siteUrl}${
         document.documentElement.dataset.theme = theme;
       })();
     </script>
+    <script is:inline define:vars={{ isHome: variant === 'home' }}>
+      if (isHome) {
+        var reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var booted = false;
+        try {
+          booted = sessionStorage.getItem('sb-home-booted') === '1';
+        } catch (_) {}
+        document.documentElement.dataset.homeBoot = reduceMotion || booted ? 'skip' : 'play';
+      }
+    </script>
   </head>
-  <body data-post-id={trackPostId}>
-    <Header lang={lang} pathname={pathname} altPath={resolvedAltPath} siteTitle={siteTitle} />
+  <body class:list={{ 'home-page': variant === 'home' }} data-post-id={trackPostId}>
+    <Header
+      lang={lang}
+      pathname={pathname}
+      altPath={resolvedAltPath}
+      siteTitle={siteTitle}
+      variant={variant}
+    />
     <main>
       <slot />
     </main>
-    <Footer lang={lang} settings={settings} />
+    <Footer lang={lang} settings={settings} variant={variant} />
 
     <script>
       // 访问统计上报（同访客同路径每日去重由服务端处理）

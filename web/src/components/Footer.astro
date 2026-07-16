@@ -5,9 +5,10 @@ import type { SettingsMap } from '@/lib/api';
 interface Props {
   lang: Lang;
   settings: SettingsMap;
+  variant?: 'default' | 'home';
 }
 
-const { lang, settings } = Astro.props;
+const { lang, settings, variant = 'default' } = Astro.props;
 const siteTitle = settings[`site_title_${lang}`] || 'SaltedBlog';
 const year = new Date().getFullYear();
 const github = settings.social_github;
@@ -16,7 +17,7 @@ const icp = settings.icp;
 const rssHref = lang === 'zh' ? '/rss.xml' : '/en/rss.xml';
 ---
 
-<footer class="site-footer">
+<footer class:list={['site-footer', { 'site-footer--home': variant === 'home' }]}>
   <div class="container">
     <div class="footer-grid">
       <div class="footer-brand-block">
@@ -47,6 +48,10 @@ const rssHref = lang === 'zh' ? '/rss.xml' : '/en/rss.xml';
     background: var(--black);
     color: #aeb3b4;
     border-top: 1px solid #2e3335;
+  }
+
+  .site-footer--home {
+    margin-top: 0;
   }
 
   .footer-grid {
