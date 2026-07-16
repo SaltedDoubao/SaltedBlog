@@ -29,6 +29,7 @@ const lang: Lang = Astro.url.pathname.startsWith('/en') ? 'en' : 'zh';
   .nf__code {
     font-size: 11px;
     color: var(--danger);
+    user-select: none;
   }
 
   .nf__title {
@@ -40,6 +41,7 @@ const lang: Lang = Astro.url.pathname.startsWith('/en') ? 'en' : 'zh';
     letter-spacing: -0.05em;
     color: transparent;
     -webkit-text-stroke: 2px var(--text);
+    user-select: none;
   }
 
   .nf__desc {

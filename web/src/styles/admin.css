@@ -29,6 +29,7 @@
   border-bottom: 1px solid #2e3335;
   text-decoration: none;
   color: inherit;
+  user-select: none;
 }
 
 .admin-side__glyph {
@@ -150,6 +151,7 @@
   font-size: 28px;
   font-weight: 900;
   letter-spacing: -0.02em;
+  user-select: none;
 }
 
 .admin-header__eyebrow {
@@ -162,6 +164,7 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-3);
+  user-select: none;
 }
 
 .admin-header__eyebrow::before {

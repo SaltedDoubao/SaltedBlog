@@ -109,6 +109,7 @@ button {
 
 .section-heading {
   margin-bottom: var(--space-12);
+  user-select: none;
 }
 
 .section-heading__eyebrow {
