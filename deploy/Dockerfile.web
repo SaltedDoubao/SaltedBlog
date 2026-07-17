@@ -21,8 +21,9 @@ ENV NODE_ENV=production \
     PORT=4321
 
 # standalone 模式的 server entry 已内联全部依赖
-COPY --from=builder /app/dist ./dist
+COPY --from=builder --chown=node:node /app/dist ./dist
 
 EXPOSE 4321
 
+USER node
 CMD ["node", "./dist/server/entry.mjs"]

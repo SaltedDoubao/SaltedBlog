@@ -16,6 +16,8 @@ backups/
 # env
 .env
 *.env.local
+deploy/secrets/*
+!deploy/secrets/README.md
 
 # node
 node_modules/

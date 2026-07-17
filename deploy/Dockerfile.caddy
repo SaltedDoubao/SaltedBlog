@@ -1,0 +1,8 @@
+FROM caddy:2.10-alpine
+
+RUN addgroup -S -g 10002 saltedcaddy \
+    && adduser -S -D -H -u 10002 -G saltedcaddy saltedcaddy \
+    && mkdir -p /data /config /var/log/caddy \
+    && chown -R 10002:10002 /data /config /var/log/caddy
+
+USER 10002:10002

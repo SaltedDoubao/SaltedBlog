@@ -1,21 +1,84 @@
-# SITE_DOMAIN 从环境变量注入（deploy/.env）
+{
+	http_port 8080
+	https_port 8443
+	servers {
+		trusted_proxies static {$UPSTREAM_PROXY_CIDRS:127.0.0.1/32}
+		trusted_proxies_strict
+	}
+}
+
+(access-log) {
+	log {
+		output file /var/log/caddy/access.json {
+			roll_size 50MiB
+			roll_keep 10
+			roll_keep_for 720h
+		}
+		format filter {
+			wrap json
+			fields {
+				request>headers>Authorization delete
+				request>headers>Cookie delete
+				request>headers>Proxy-Authorization delete
+				request>headers>X-Csrf-Token delete
+			}
+		}
+	}
+}
+
+# 公网站点绝不暴露管理页面、认证接口和管理 API。
 {$SITE_DOMAIN} {
+	import access-log
 	encode zstd gzip
 
-	# API 与上传文件走 Rust 服务
+	@admin_surface path /admin /admin/* /api/admin/* /api/auth/*
+	respond @admin_surface 404
+
 	@backend path /api/* /uploads/* /healthz
 	handle @backend {
 		reverse_proxy api:8787
 	}
-
-	# 其余流量走 Astro SSR
 	handle {
 		reverse_proxy web:4321
 	}
 
 	header {
+		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff
 		X-Frame-Options SAMEORIGIN
 		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://giscus.app; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://giscus.app; frame-src https://giscus.app; object-src 'none'; base-uri 'self'"
+	}
+}
+
+# 管理站点只接受直接来自 VPN/私网的连接；不得由公网外层代理转发本域名。
+{$ADMIN_DOMAIN} {
+	tls internal
+	import access-log
+	encode zstd gzip
+
+	@vpn remote_ip {$ADMIN_ALLOWED_CIDRS}
+	handle @vpn {
+		@backend path /api/* /uploads/* /healthz
+		handle @backend {
+			reverse_proxy api:8787
+		}
+		handle {
+			reverse_proxy web:4321
+		}
+	}
+	handle {
+		respond 404
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
+		Cache-Control "no-store"
 	}
 }

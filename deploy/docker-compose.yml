@@ -1,87 +1,197 @@
-# ============================================
-# SaltedBlog 生产部署编排
-# 使用：
-#   cd deploy
-#   cp ../.env.example .env   # 修改域名、数据库密码、管理员密码
-#   docker compose up -d --build
-# ============================================
-
 name: saltedblog
+
+x-hardened: &hardened
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 256
+  mem_limit: 1g
+  cpus: 2.0
 
 services:
   caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
+    <<: *hardened
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.caddy
     ports:
-      - "80:80"
-      - "443:443"
+      - "80:8080"
+      - "443:8443"
     environment:
-      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN in deploy/.env}
+      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:?set ADMIN_DOMAIN}
+      ADMIN_ALLOWED_CIDRS: ${ADMIN_ALLOWED_CIDRS:?set ADMIN_ALLOWED_CIDRS}
+      UPSTREAM_PROXY_CIDRS: ${UPSTREAM_PROXY_CIDRS:-127.0.0.1/32}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    tmpfs: [/tmp]
+    networks:
+      edge:
+        ipv4_address: 172.30.0.10
     depends_on:
-      - web
-      - api
+      web: { condition: service_healthy }
+      api: { condition: service_healthy }
 
   web:
+    <<: *hardened
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web
-    restart: unless-stopped
     environment:
       API_URL: http://api:8787
       PUBLIC_SITE_URL: https://${SITE_DOMAIN}
       PORT: "4321"
+    tmpfs:
+      - /tmp
+      - /app/.astro:uid=1000,gid=1000
+    networks:
+      edge:
+        ipv4_address: 172.30.0.20
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:4321/]
+      interval: 30s
+      timeout: 5s
+      retries: 5
     depends_on:
-      api:
-        condition: service_healthy
+      api: { condition: service_healthy }
 
   api:
+    <<: *hardened
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
-    restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-salted}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@postgres:5432/${POSTGRES_DB:-saltedblog}
+      APP_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_MAINTENANCE_URL_FILE: /run/secrets/database_maintenance_url
       BIND_ADDR: 0.0.0.0:8787
       UPLOAD_DIR: /data/uploads
       BACKUP_DIR: /data/backups
       BACKUP_KEEP: ${BACKUP_KEEP:-7}
       BACKUP_UPLOAD_MAX_MB: ${BACKUP_UPLOAD_MAX_MB:-1024}
       UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-20}
-      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-30}
+      SESSION_ABSOLUTE_HOURS: ${SESSION_ABSOLUTE_HOURS:-12}
+      STEP_UP_MINUTES: ${STEP_UP_MINUTES:-5}
       COOKIE_SECURE: "true"
+      ADMIN_ORIGIN: https://${ADMIN_DOMAIN}
+      TRUSTED_PROXY_CIDRS: 172.30.0.10/32
+      MFA_REQUIRED: "true"
+      MFA_ENCRYPTION_KEY_FILE: /run/secrets/mfa_encryption_key
+      BACKUP_SIGNING_KEY_FILE: /run/secrets/backup_signing_key
       STATS_TZ_OFFSET_HOURS: ${STATS_TZ_OFFSET_HOURS:-8}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in deploy/.env}
-      NEWS_LLM_API_KEY: ${NEWS_LLM_API_KEY:-}
-      RUST_LOG: info
+      NEWS_LLM_API_KEY_FILE: /run/secrets/news_llm_api_key
+      RUST_LOG: info,sqlx=warn
+    secrets: [database_url, database_maintenance_url, mfa_encryption_key, backup_signing_key, news_llm_api_key]
     volumes:
-      - uploads:/data/uploads
-      - ../backups:/data/backups
+      - app_data:/data
+    tmpfs: [/tmp]
+    networks:
+      edge:
+        ipv4_address: 172.30.0.30
+      data:
     depends_on:
-      postgres:
-        condition: service_healthy
-
-  postgres:
-    image: postgres:17-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-salted}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
-      POSTGRES_DB: ${POSTGRES_DB:-saltedblog}
-    volumes:
-      - pg_data:/var/lib/postgresql/data
+      migrate: { condition: service_completed_successfully }
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-salted} -d ${POSTGRES_DB:-saltedblog}"]
-      interval: 10s
+      test: [CMD, curl, -fsS, http://127.0.0.1:8787/healthz]
+      interval: 30s
       timeout: 5s
       retries: 5
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    command: [salted-api, migrate]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      APP_ENV: production
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_MAINTENANCE_URL_FILE: /run/secrets/database_maintenance_url
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      MFA_REQUIRED: "true"
+      COOKIE_SECURE: "true"
+      ADMIN_ORIGIN: https://${ADMIN_DOMAIN}
+      MFA_ENCRYPTION_KEY_FILE: /run/secrets/mfa_encryption_key
+      BACKUP_SIGNING_KEY_FILE: /run/secrets/backup_signing_key
+    secrets: [database_url, database_maintenance_url, admin_password, mfa_encryption_key, backup_signing_key]
+    tmpfs: [/tmp]
+    networks: [data]
+    depends_on:
+      db-init: { condition: service_completed_successfully }
+
+  db-init:
+    image: postgres:17.5-alpine
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      POSTGRES_SUPERUSER: ${POSTGRES_SUPERUSER:-salted_admin}
+      POSTGRES_DB: ${POSTGRES_DB:-saltedblog}
+    secrets: [postgres_superuser_password, postgres_owner_password, postgres_app_password]
+    volumes: [./init-db.sh:/init-db.sh:ro]
+    command: [sh, /init-db.sh]
+    tmpfs: [/tmp]
+    networks: [data]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  postgres:
+    image: postgres:17.5-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-salted_admin}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_superuser_password
+      POSTGRES_DB: ${POSTGRES_DB:-saltedblog}
+    secrets: [postgres_superuser_password]
+    volumes: [pg_data:/var/lib/postgresql/data]
+    networks: [data]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  edge:
+    ipam:
+      config: [{ subnet: 172.30.0.0/24 }]
+  data:
+    internal: true
+    ipam:
+      config: [{ subnet: 172.31.0.0/24 }]
 
 volumes:
   caddy_data:
   caddy_config:
+  caddy_logs:
   pg_data:
-  uploads:
+  app_data:
+
+secrets:
+  database_url:
+    file: ${DATABASE_URL_SECRET_FILE:-./secrets/database_url}
+  database_maintenance_url:
+    file: ${DATABASE_MAINTENANCE_URL_SECRET_FILE:-./secrets/database_maintenance_url}
+  postgres_superuser_password:
+    file: ${POSTGRES_SUPERUSER_PASSWORD_FILE:-./secrets/postgres_superuser_password}
+  postgres_owner_password:
+    file: ${POSTGRES_OWNER_PASSWORD_FILE:-./secrets/postgres_owner_password}
+  postgres_app_password:
+    file: ${POSTGRES_APP_PASSWORD_FILE:-./secrets/postgres_app_password}
+  admin_password:
+    file: ${ADMIN_PASSWORD_FILE:-./secrets/admin_password}
+  mfa_encryption_key:
+    file: ${MFA_ENCRYPTION_KEY_FILE:-./secrets/mfa_encryption_key}
+  backup_signing_key:
+    file: ${BACKUP_SIGNING_KEY_FILE:-./secrets/backup_signing_key}
+  news_llm_api_key:
+    file: ${NEWS_LLM_API_KEY_FILE:-./secrets/news_llm_api_key}
