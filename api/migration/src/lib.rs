@@ -7,6 +7,7 @@ mod m20260717_000004_security_logs;
 mod m20260717_000005_news_tasks;
 mod m20260717_000006_news_task_publish_options;
 mod m20260717_000007_single_language_posts;
+mod m20260717_000008_author_identity;
 
 pub struct Migrator;
 
@@ -21,6 +22,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260717_000005_news_tasks::Migration),
             Box::new(m20260717_000006_news_task_publish_options::Migration),
             Box::new(m20260717_000007_single_language_posts::Migration),
+            Box::new(m20260717_000008_author_identity::Migration),
         ]
     }
 }

@@ -254,7 +254,7 @@ async fn seed_settings(db: &sea_orm::DatabaseConnection) -> anyhow::Result<()> {
             "home_protocol_description_en",
             "All content nodes are connected. Choose a path and continue beyond the frontier.",
         ),
-        ("author", "Salted"),
+        ("author", "SaltedDoubao"),
         ("giscus_repo", ""),
         ("giscus_repo_id", ""),
         ("giscus_category", ""),
