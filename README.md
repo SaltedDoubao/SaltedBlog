@@ -8,7 +8,8 @@
 浏览器
   │
 Caddy（自动 HTTPS）
-  ├── /            → web  (Astro SSR, Node)   前台页面 + /admin 后台
+  ├── 公网域名 /   → web  (Astro SSR, Node)   前台页面（后台路径统一 404）
+  ├── VPN 管理域名 → web  (Astro SSR, Node)   /admin 后台
   ├── /api/*       → api  (Rust Axum)         业务接口
   └── /uploads/*   → api                      上传的图片
                       │
@@ -27,7 +28,7 @@ Caddy（自动 HTTPS）
 - AI 情报日报：内置多信源聚合管线（RSS/Atom + GitHub Trending → 指纹去重 → 关键词过滤 →
   权重配额选稿 → LLM 双语整理），每日自动生成中英双语「AI 前沿日报」文章（分类 `ai-daily`），
   主页「最新情报」与黄色滚动字幕展示最新一期重点条目
-- 后台 `/admin`：登录（argon2 + Session + 登录限流）、仪表盘、文章管理（CodeMirror 分屏编辑器、
+- 后台 `/admin`：VPN 私网入口、登录（argon2 + 强制 TOTP + CSRF + 登录限流）、仪表盘、日志中心、文章管理（CodeMirror 分屏编辑器、
   图片粘贴/拖拽上传）、情报管理（信源 CRUD/试抓/采集日志/条目审计/日报任务与 LLM 配置）、
   分类/标签/系列、友链、图片素材库、站点设置、备份管理（生成/恢复/上传/下载）
 - 运维：Docker Compose（Caddy + Web + API + PostgreSQL）、备份脚本与后台共用 zip 格式（数据库 + 图片）
@@ -87,7 +88,7 @@ npm run dev
 ```bash
 git clone <repo> /opt/SaltedBlog && cd /opt/SaltedBlog/deploy
 cp ../.env.example .env
-# 必改：SITE_DOMAIN、POSTGRES_PASSWORD、ADMIN_PASSWORD
+# 按 deploy/secrets/README.md 创建生产密钥，并配置 SITE_DOMAIN、ADMIN_DOMAIN、ADMIN_ALLOWED_CIDRS 与代理 CIDR
 docker compose up -d --build
 ```
 
@@ -97,7 +98,7 @@ docker compose up -d --build
 
 ## 备份与恢复
 
-备份内容为**当前数据库引擎**对应的库文件（SQLite → `blog.db`，PostgreSQL → `blog.sql`）+ `uploads/`，打包为 zip，保存到 `backups/`。SQLite 与 PostgreSQL **不互相转换恢复**。
+备份内容为**当前数据库引擎**对应的库文件（SQLite → `blog.db`，PostgreSQL → `blog.dump`）+ `uploads/`。v2 备份包含逐文件 SHA-256 与实例 HMAC 签名，SQLite 与 PostgreSQL **不互相转换恢复**。
 
 ### 后台「备份管理」
 
@@ -106,8 +107,7 @@ docker compose up -d --build
 ### 命令行脚本
 
 ```bash
-./scripts/backup.sh              # 自动检测模式，输出 backups/saltedblog_{sqlite|postgres}_*.zip
-KEEP=30 ./scripts/backup.sh      # 保留最近 30 份
+./scripts/backup.sh              # 调用应用生成带签名的 v2 备份
 ```
 
 定时备份（crontab）：`0 3 * * * cd /opt/SaltedBlog && ./scripts/backup.sh >> backups/backup.log 2>&1`
@@ -117,7 +117,7 @@ zip 内部结构：
 ```text
 manifest.json
 blog.db          # 仅 SQLite 备份
-blog.sql         # 仅 PostgreSQL 备份
+blog.dump        # 仅 PostgreSQL custom dump
 uploads/
 ```
 
@@ -138,12 +138,18 @@ uploads/
 | `API_URL` | Web SSR 访问 API 的内部地址 | `http://127.0.0.1:8787` |
 | `PUBLIC_SITE_URL` | 站点对外地址（canonical / RSS / sitemap） | `http://localhost:4321` |
 | `SITE_DOMAIN` | 域名（仅 Docker，供 Caddy 使用） | — |
+| `ADMIN_DOMAIN` / `ADMIN_ORIGIN` | VPN 管理域名与唯一合法 Origin | — |
 | `UPLOAD_MAX_MB` | 上传大小上限 | 20 |
 | `BACKUP_DIR` | 备份目录 | `backups` |
 | `BACKUP_KEEP` | 自动保留最近 N 份备份 | 7 |
 | `BACKUP_UPLOAD_MAX_MB` | 后台上传备份 zip 上限（MB） | 1024 |
+| `SESSION_IDLE_MINUTES` / `SESSION_ABSOLUTE_HOURS` | 会话闲置/绝对超时 | 30 / 12 |
+| `MFA_REQUIRED` / `MFA_ENCRYPTION_KEY` | TOTP 强制开关与密钥 | false / 空 |
+| `BACKUP_SIGNING_KEY` | v2 备份签名密钥 | 空 |
 | `STATS_TZ_OFFSET_HOURS` | 统计时区偏移（北京=8） | 8 |
 | `NEWS_LLM_API_KEY` | AI 日报 LLM 的 API Key（OpenAI 兼容，不落库） | 空 |
+
+生产环境使用 Docker Secrets、最小权限 PostgreSQL 双角色和独立迁移任务。VPN、私有 DNS、旧数据兼容和宿主机加固步骤见 [`deploy/HARDENING.md`](deploy/HARDENING.md)。
 
 ## AI 情报日报
 
