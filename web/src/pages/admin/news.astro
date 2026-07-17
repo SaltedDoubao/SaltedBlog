@@ -5,7 +5,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
 <AdminLayout title="情报管理" eyebrow="NEWS / INTEL PIPELINE" active="news">
   <Fragment slot="actions">
     <button class="btn btn--sm" id="fetchAllBtn" type="button">立即采集全部</button>
-    <button class="btn btn--primary btn--sm" id="generateBtn" type="button">生成今日日报</button>
   </Fragment>
 
   <div class="admin-panel">
@@ -15,28 +14,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     </div>
     <div class="admin-panel__body">
       <div class="form-grid">
-        <div class="form-field">
-          <label class="label">定时任务总开关</label>
-          <select class="select" data-news-setting="news_enabled">
-            <option value="false">关闭（仅手动操作）</option>
-            <option value="true">开启（自动采集 + 每日日报）</option>
-          </select>
-        </div>
-        <div class="form-field">
-          <label class="label">采集间隔（小时）</label>
-          <input class="input" data-news-setting="news_fetch_interval_hours" type="number" min="1" max="24" />
-        </div>
-        <div class="form-field">
-          <label class="label">日报生成时间（HH:MM，站点时区）</label>
-          <input class="input" data-news-setting="news_digest_time" placeholder="08:00" />
-        </div>
-        <div class="form-field">
-          <label class="label">生成后处理</label>
-          <select class="select" data-news-setting="news_digest_auto_publish">
-            <option value="true">自动发布文章</option>
-            <option value="false">保存为草稿（人工审核后发布）</option>
-          </select>
-        </div>
         <div class="form-field">
           <label class="label">LLM Base URL（OpenAI 兼容）</label>
           <input class="input" data-news-setting="news_llm_base_url" placeholder="https://api.deepseek.com/v1" />
@@ -60,9 +37,89 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
       </div>
       <p class="news-hint">
         API Key 通过服务端环境变量 <code>NEWS_LLM_API_KEY</code> 配置（不落库），修改后需重启 API。
-        定时生成失败的日期不会自动重试，可在下方任务列表确认后手动重新生成。
+        定时生成失败的日期不会自动重试，可在下方执行记录确认后从任务列表强制执行。
       </p>
     </div>
+  </div>
+
+  <div class="admin-panel">
+    <div class="admin-panel__head">
+      <span>TASKS / 任务列表</span>
+      <button class="btn btn--sm" id="newTaskBtn" type="button">+ 新增任务</button>
+    </div>
+    <div class="admin-panel__body" id="taskForm" hidden>
+      <div class="form-grid">
+        <div class="form-field">
+          <label class="label">任务名称 *</label>
+          <input class="input" data-task-field="name" maxlength="128" />
+        </div>
+        <div class="form-field">
+          <label class="label">任务类型 *</label>
+          <select class="select" data-task-field="task_type">
+            <option value="fetch">信息采集</option>
+            <option value="digest">整理发布</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="label">独立开关</label>
+          <select class="select" data-task-field="enabled">
+            <option value="false">关闭</option>
+            <option value="true">开启</option>
+          </select>
+        </div>
+      </div>
+      <div class="task-template form-grid" data-task-template="fetch">
+        <div class="form-field">
+          <label class="label">起始时间（HH:MM，站点时区）</label>
+          <input class="input" data-task-field="start_time" type="time" step="60" value="00:00" />
+        </div>
+        <div class="form-field">
+          <label class="label">采集间隔（小时）</label>
+          <input class="input" data-task-field="interval_hours" type="number" min="1" max="24" value="2" />
+        </div>
+      </div>
+      <div class="task-template form-grid" data-task-template="digest" hidden>
+        <div class="form-field">
+          <label class="label">英文日报标题 *</label>
+          <input class="input" data-task-field="title_en" maxlength="300" placeholder="AI Morning Brief" />
+        </div>
+        <div class="form-field">
+          <label class="label">生成时间（HH:MM，站点时区）</label>
+          <input class="input" data-task-field="generation_time" type="time" step="60" value="08:00" />
+        </div>
+        <div class="form-field">
+          <label class="label">生成后处理</label>
+          <select class="select" data-task-field="publish_mode">
+            <option value="scheduled">直接发布（在设定发布时间发布）</option>
+            <option value="draft">保存草稿（不自动发布）</option>
+          </select>
+        </div>
+        <div class="form-field publish-time-field" data-publish-time>
+          <label class="label">发布时间（当天且晚于生成时间）</label>
+          <input class="input" data-task-field="publish_time" type="time" step="60" value="09:00" />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--primary btn--sm" id="saveTaskBtn" type="button">保存任务</button>
+        <button class="btn btn--sm" id="cancelTaskBtn" type="button">取消</button>
+      </div>
+    </div>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th style="width:44px">ID</th>
+          <th>名称</th>
+          <th>类型</th>
+          <th>计划</th>
+          <th>状态</th>
+          <th>最近调度</th>
+          <th style="width:280px">操作</th>
+        </tr>
+      </thead>
+      <tbody id="tasksBody">
+        <tr><td colspan="7" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <div class="admin-panel">
@@ -171,24 +228,25 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
 
   <div class="admin-panel">
     <div class="admin-panel__head">
-      <span>DIGEST / 日报任务</span>
+      <span>DIGEST / 日报执行记录</span>
       <button class="btn btn--sm" id="refreshJobsBtn" type="button">刷新</button>
     </div>
     <table class="admin-table">
       <thead>
         <tr>
           <th style="width:44px">ID</th>
+          <th>任务</th>
           <th>日期</th>
           <th>触发</th>
-          <th>状态</th>
+          <th>生成</th>
+          <th>发布</th>
           <th>候选/选中</th>
-          <th>模型</th>
           <th>文章</th>
           <th>信息</th>
         </tr>
       </thead>
       <tbody id="jobsBody">
-        <tr><td colspan="8" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
+        <tr><td colspan="9" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
       </tbody>
     </table>
   </div>
@@ -313,6 +371,20 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     padding: 10px 14px;
     font-size: 13px;
   }
+
+  .task-template {
+    margin-top: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border);
+  }
+
+  .task-template[hidden] {
+    display: none;
+  }
+
+  .publish-time-field[hidden] {
+    display: none;
+  }
 </style>
 
 <script>
@@ -349,6 +421,25 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     post_id_en: number | null;
     started_at: string;
     finished_at: string | null;
+    news_task_id: number | null;
+    task_name: string | null;
+    scheduled_publish_at: string | null;
+    published_at: string | null;
+    publish_error: string | null;
+  }
+
+  interface NewsTask {
+    id: number;
+    name: string;
+    task_type: 'fetch' | 'digest';
+    enabled: boolean;
+    start_time: string | null;
+    interval_hours: number | null;
+    generation_time: string | null;
+    publish_time: string | null;
+    title_en: string | null;
+    publish_mode: 'draft' | 'scheduled' | null;
+    last_scheduled_at: string | null;
   }
 
   interface NewsItem {
@@ -378,10 +469,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
   }
 
   const NEWS_SETTING_KEYS = [
-    'news_enabled',
-    'news_fetch_interval_hours',
-    'news_digest_time',
-    'news_digest_auto_publish',
     'news_llm_base_url',
     'news_llm_model',
     'news_llm_extra_prompt',
@@ -395,6 +482,8 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     )
   );
   const sourceForm = document.getElementById('sourceForm')!;
+  const taskForm = document.getElementById('taskForm')!;
+  const tasksBody = document.getElementById('tasksBody')!;
   const sourcesBody = document.getElementById('sourcesBody')!;
   const testResult = document.getElementById('testResult')!;
   const jobsBody = document.getElementById('jobsBody')!;
@@ -405,6 +494,8 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
   const itemsPageInfo = document.getElementById('itemsPageInfo')!;
 
   let sources: Source[] = [];
+  let newsTasks: NewsTask[] = [];
+  let editingTaskId: number | null = null;
   let editingSourceId: number | null = null;
   let itemsPage = 1;
   let itemsTotal = 0;
@@ -414,7 +505,21 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
   const field = (name: string) =>
     sourceForm.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-field="${name}"]`)!;
 
+  const taskField = (name: string) =>
+    taskForm.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-task-field="${name}"]`)!;
+
   const fmtTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+
+  const fmtMinute = (iso: string | null) =>
+    iso
+      ? new Date(iso).toLocaleString(undefined, {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : '—';
 
   const statusBadge = (status: string) =>
     `<span class="badge badge--${escapeHtml(status)}">${escapeHtml(status)}</span>`;
@@ -439,14 +544,203 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
       const key = el.dataset.newsSetting!;
       if (NEWS_SETTING_KEYS.includes(key)) payload[key] = el.value;
     }
-    const time = payload['news_digest_time'] ?? '';
-    if (!/^\d{1,2}:\d{2}$/.test(time)) {
-      toast('日报生成时间格式应为 HH:MM', 'error');
+    try {
+      await adminFetch('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });
+      toast('运行配置已保存');
+    } catch (err) {
+      toast(`保存失败：${(err as Error).message}`, 'error');
+    }
+  });
+
+  // ---------- 定时任务 ----------
+
+  function syncTaskFields() {
+    const taskType = taskField('task_type').value;
+    taskForm.querySelectorAll<HTMLElement>('[data-task-template]').forEach((template) => {
+      template.hidden = template.dataset.taskTemplate !== taskType;
+    });
+    syncPublishMode();
+  }
+
+  function syncPublishMode() {
+    const draft = taskField('publish_mode').value === 'draft';
+    const field = taskForm.querySelector<HTMLElement>('[data-publish-time]')!;
+    field.hidden = draft;
+    if (draft) taskField('publish_time').value = '';
+  }
+
+  function openTaskForm(row?: NewsTask) {
+    editingTaskId = row?.id ?? null;
+    taskField('name').value = row?.name ?? '';
+    taskField('task_type').value = row?.task_type ?? 'fetch';
+    taskField('task_type').disabled = Boolean(row);
+    taskField('enabled').value = String(row?.enabled ?? false);
+    taskField('start_time').value = row?.start_time ?? '00:00';
+    taskField('interval_hours').value = String(row?.interval_hours ?? 2);
+    taskField('generation_time').value = row?.generation_time ?? '08:00';
+    taskField('publish_time').value = row?.publish_time ?? '09:00';
+    taskField('title_en').value = row?.title_en ?? 'AI Frontier Daily';
+    taskField('publish_mode').value = row?.publish_mode ?? 'scheduled';
+    syncTaskFields();
+    taskForm.hidden = false;
+    taskField('name').focus();
+  }
+
+  function taskPayload() {
+    const taskType = taskField('task_type').value;
+    return {
+      name: taskField('name').value.trim(),
+      task_type: taskType,
+      enabled: taskField('enabled').value === 'true',
+      start_time: taskType === 'fetch' ? taskField('start_time').value : null,
+      interval_hours: taskType === 'fetch' ? Number(taskField('interval_hours').value) : null,
+      generation_time: taskType === 'digest' ? taskField('generation_time').value : null,
+      publish_time:
+        taskType === 'digest' && taskField('publish_mode').value === 'scheduled'
+          ? taskField('publish_time').value
+          : null,
+      title_en: taskType === 'digest' ? taskField('title_en').value.trim() : null,
+      publish_mode: taskType === 'digest' ? taskField('publish_mode').value : null,
+    };
+  }
+
+  async function loadTasks() {
+    try {
+      const res = await adminFetch<{ items: NewsTask[] }>('/api/admin/news/tasks');
+      newsTasks = res.items;
+    } catch (err) {
+      toast(`任务加载失败：${(err as Error).message}`, 'error');
+      return;
+    }
+    if (newsTasks.length === 0) {
+      tasksBody.innerHTML =
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-3)">暂无定时任务</td></tr>';
+      return;
+    }
+    tasksBody.innerHTML = newsTasks
+      .map((task) => {
+        const schedule =
+          task.task_type === 'fetch'
+            ? `${task.start_time ?? '—'} 起，每 ${task.interval_hours ?? '—'} 小时`
+            : task.publish_mode === 'draft'
+              ? `${task.generation_time ?? '—'} 生成后保存草稿`
+              : `${task.generation_time ?? '—'} 生成 / ${task.publish_time ?? '—'} 发布`;
+        return `<tr>
+          <td class="mono">${task.id}</td>
+          <td style="font-weight:600">${escapeHtml(task.name)}</td>
+          <td>${task.task_type === 'fetch' ? '信息采集' : '整理发布'}</td>
+          <td class="mono">${escapeHtml(schedule)}</td>
+          <td><span class="badge ${task.enabled ? 'badge--published' : 'badge--draft'}">${task.enabled ? '开启' : '关闭'}</span></td>
+          <td class="mono" style="font-size:11px">${fmtTime(task.last_scheduled_at)}</td>
+          <td><div class="cell-actions">
+            <button class="btn btn--sm" data-task-run="${task.id}" type="button">立即执行</button>
+            <button class="btn btn--sm" data-task-toggle="${task.id}" type="button">${task.enabled ? '关闭' : '开启'}</button>
+            <button class="btn btn--sm" data-task-edit="${task.id}" type="button">编辑</button>
+            <button class="btn btn--sm btn--danger" data-task-del="${task.id}" type="button">删除</button>
+          </div></td>
+        </tr>`;
+      })
+      .join('');
+
+    tasksBody.querySelectorAll<HTMLButtonElement>('[data-task-edit]').forEach((btn) =>
+      btn.addEventListener('click', () => {
+        const task = newsTasks.find((item) => item.id === Number(btn.dataset.taskEdit));
+        if (task) openTaskForm(task);
+      })
+    );
+    tasksBody.querySelectorAll<HTMLButtonElement>('[data-task-toggle]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        const task = newsTasks.find((item) => item.id === Number(btn.dataset.taskToggle));
+        if (!task) return;
+        try {
+          await adminFetch(`/api/admin/news/tasks/${task.id}/toggle`, {
+            method: 'PUT',
+            body: JSON.stringify({ enabled: !task.enabled }),
+          });
+          toast(`任务已${task.enabled ? '关闭' : '开启'}，调度器约 1 分钟内生效`);
+          loadTasks();
+        } catch (err) {
+          toast(`切换失败：${(err as Error).message}`, 'error');
+        }
+      })
+    );
+    tasksBody.querySelectorAll<HTMLButtonElement>('[data-task-del]').forEach((btn) =>
+      btn.addEventListener('click', async () => {
+        if (!confirmDanger('确认删除该任务？历史执行记录和已生成文章会保留。')) return;
+        try {
+          await adminFetch(`/api/admin/news/tasks/${btn.dataset.taskDel}`, { method: 'DELETE' });
+          toast('任务已删除');
+          loadTasks();
+        } catch (err) {
+          toast(`删除失败：${(err as Error).message}`, 'error');
+        }
+      })
+    );
+    tasksBody.querySelectorAll<HTMLButtonElement>('[data-task-run]').forEach((btn) =>
+      btn.addEventListener('click', () => runTask(Number(btn.dataset.taskRun), false))
+    );
+  }
+
+  async function runTask(id: number, force: boolean) {
+    try {
+      await adminFetch(`/api/admin/news/tasks/${id}/run`, {
+        method: 'POST',
+        body: JSON.stringify({ force }),
+      });
+      toast('任务已提交；手动执行不会改变自动调度节奏');
+      startJobsPolling();
+      window.setTimeout(() => {
+        loadLogs();
+        loadItems();
+      }, 3000);
+    } catch (err) {
+      const message = (err as Error).message;
+      if (!force && message.includes('已有执行记录')) {
+        if (confirmDanger('该整理任务今天已执行。强制执行会覆盖当天文章，是否继续？')) {
+          await runTask(id, true);
+        }
+        return;
+      }
+      toast(`执行失败：${message}`, 'error');
+    }
+  }
+
+  taskField('task_type').addEventListener('change', syncTaskFields);
+  taskField('publish_mode').addEventListener('change', syncPublishMode);
+  document.getElementById('newTaskBtn')!.addEventListener('click', () => openTaskForm());
+  document.getElementById('cancelTaskBtn')!.addEventListener('click', () => {
+    taskForm.hidden = true;
+    editingTaskId = null;
+    taskField('task_type').disabled = false;
+  });
+  document.getElementById('saveTaskBtn')!.addEventListener('click', async () => {
+    const payload = taskPayload();
+    if (!payload.name) {
+      toast('任务名称必填', 'error');
+      return;
+    }
+    if (payload.task_type === 'digest' && !payload.title_en) {
+      toast('英文日报标题必填', 'error');
+      return;
+    }
+    if (
+      payload.task_type === 'digest' &&
+      payload.publish_mode === 'scheduled' &&
+      payload.publish_time! <= payload.generation_time!
+    ) {
+      toast('发布时间必须晚于当天生成时间', 'error');
       return;
     }
     try {
-      await adminFetch('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });
-      toast('配置已保存（调度器约 1 分钟内生效）');
+      await adminFetch(editingTaskId ? `/api/admin/news/tasks/${editingTaskId}` : '/api/admin/news/tasks', {
+        method: editingTaskId ? 'PUT' : 'POST',
+        body: JSON.stringify(payload),
+      });
+      toast('任务已保存');
+      taskForm.hidden = true;
+      editingTaskId = null;
+      taskField('task_type').disabled = false;
+      loadTasks();
     } catch (err) {
       toast(`保存失败：${(err as Error).message}`, 'error');
     }
@@ -692,29 +986,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     }
   });
 
-  async function requestGenerate(force: boolean) {
-    try {
-      await adminFetch('/api/admin/news/digest/generate', {
-        method: 'POST',
-        body: JSON.stringify({ force }),
-      });
-      toast('已提交生成任务，请在「日报任务」中查看进度');
-      startJobsPolling();
-    } catch (err) {
-      const message = (err as Error).message;
-      if (!force && message.includes('已存在')) {
-        if (confirmDanger('当日已存在日报任务。强制重新生成将覆盖当日文章（保留阅读量与评论），是否继续？')) {
-          await requestGenerate(true);
-        }
-        return;
-      }
-      toast(`生成失败：${message}`, 'error');
-    }
-  }
-
-  document.getElementById('generateBtn')!.addEventListener('click', () => requestGenerate(false));
-
-  // ---------- 日报任务 ----------
+  // ---------- 日报执行记录 ----------
 
   async function loadJobs(): Promise<Job[]> {
     let jobs: Job[] = [];
@@ -727,7 +999,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     }
     if (jobs.length === 0) {
       jobsBody.innerHTML =
-        '<tr><td colspan="8" style="text-align:center;color:var(--text-3)">暂无任务，配置 LLM 后点击「生成今日日报」</td></tr>';
+        '<tr><td colspan="9" style="text-align:center;color:var(--text-3)">暂无执行记录</td></tr>';
       return jobs;
     }
     jobsBody.innerHTML = jobs
@@ -735,11 +1007,22 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
         (job) => `
         <tr>
           <td class="mono">${job.id}</td>
+          <td>${job.task_name ? escapeHtml(job.task_name) : '<span style="color:var(--text-3)">历史任务</span>'}</td>
           <td class="mono">${escapeHtml(job.digest_date)}</td>
           <td class="mono">${escapeHtml(job.trigger)}</td>
           <td>${statusBadge(job.status)}</td>
+          <td>${
+            job.published_at
+              ? '<span class="badge badge--published">published</span>'
+              : job.publish_error
+                ? '<span class="badge badge--failed">failed</span>'
+                : job.status === 'success'
+                  ? job.scheduled_publish_at
+                    ? `<span class="badge badge--draft" title="计划 ${fmtMinute(job.scheduled_publish_at)}">pending</span>`
+                    : '<span class="badge badge--draft">draft</span>'
+                  : '<span style="color:var(--text-3)">—</span>'
+          }</td>
           <td class="mono">${job.raw_count} / ${job.selected_count}</td>
-          <td class="mono">${job.llm_model ? escapeHtml(job.llm_model) : '—'}</td>
           <td>${
             job.post_id_zh
               ? `<a class="btn btn--sm" href="/admin/posts/edit?id=${job.post_id_zh}">中文</a> ` +
@@ -747,7 +1030,11 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
               : '<span style="color:var(--text-3)">—</span>'
           }</td>
           <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(job.error_message ?? '')}">${
-            job.error_message ? escapeHtml(job.error_message) : `<span style="color:var(--text-3)">${fmtTime(job.finished_at)}</span>`
+            job.error_message
+              ? escapeHtml(job.error_message)
+              : job.publish_error
+                ? escapeHtml(job.publish_error)
+                : `<span style="color:var(--text-3)">${job.published_at ? fmtMinute(job.published_at) : fmtTime(job.finished_at)}</span>`
           }</td>
         </tr>`
       )
@@ -875,6 +1162,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
   // ---------- 初始化 ----------
 
   loadSettings();
+  loadTasks();
   loadSources();
   loadJobs().then((jobs) => {
     if (jobs.some((job) => job.status === 'running')) startJobsPolling();

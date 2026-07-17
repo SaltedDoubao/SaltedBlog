@@ -4,6 +4,8 @@ mod m20260716_000001_init;
 mod m20260716_000002_site_icons;
 mod m20260716_000003_ai_digest;
 mod m20260717_000004_security_logs;
+mod m20260717_000005_news_tasks;
+mod m20260717_000006_news_task_publish_options;
 
 pub struct Migrator;
 
@@ -15,6 +17,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260716_000002_site_icons::Migration),
             Box::new(m20260716_000003_ai_digest::Migration),
             Box::new(m20260717_000004_security_logs::Migration),
+            Box::new(m20260717_000005_news_tasks::Migration),
+            Box::new(m20260717_000006_news_task_publish_options::Migration),
         ]
     }
 }

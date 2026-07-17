@@ -16,7 +16,7 @@ pub struct Candidate {
 /// 时间窗内候选加载结果
 pub struct CandidatePool {
     pub selected: Vec<Candidate>,
-    /// 时间窗内 pending 总数（选稿前）
+    /// 时间窗内可复用候选总数（选稿前）
     pub raw_count: usize,
 }
 
@@ -346,7 +346,7 @@ pub fn select_quota(entries: &[RankEntry], active_source_count: usize) -> Vec<i3
 
 // ---------- 从数据库加载并选稿 ----------
 
-/// 加载 24h 时间窗内 pending 候选（信源须 enabled + send_to_llm），执行配额选稿
+/// 加载 24h 时间窗内 pending/processed 候选（信源须 enabled + send_to_llm），执行配额选稿
 pub async fn load_candidates(db: &DatabaseConnection) -> Result<CandidatePool, sea_orm::DbErr> {
     let sources = news_sources::Entity::find()
         .filter(
@@ -378,7 +378,10 @@ pub async fn load_candidates(db: &DatabaseConnection) -> Result<CandidatePool, s
         .filter(
             Condition::all()
                 .add(news_items::Column::SourceId.is_in(source_ids))
-                .add(news_items::Column::Status.eq(news_items::STATUS_PENDING))
+                .add(
+                    news_items::Column::Status
+                        .is_in([news_items::STATUS_PENDING, news_items::STATUS_PROCESSED]),
+                )
                 .add(window),
         )
         .order_by_desc(news_items::Column::FetchedAt)

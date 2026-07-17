@@ -5,8 +5,8 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::{digest_jobs, news_items, posts};
-use crate::news::{llm, load_settings, local_date_string, ranker, seed, NewsSettings};
+use crate::entities::{digest_jobs, news_items, news_tasks, posts};
+use crate::news::{llm, load_settings, local_date_string, ranker, seed, tasks, NewsSettings};
 use crate::render::prepare_post_content;
 use crate::state::AppState;
 
@@ -15,35 +15,38 @@ fn digest_lock() -> &'static tokio::sync::Mutex<()> {
     LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
-pub fn digest_slug(date: &str) -> String {
-    format!("ai-daily-{date}")
+pub fn digest_slug(task_id: i32, date: &str) -> String {
+    format!("ai-daily-{task_id}-{date}")
 }
 
-pub fn digest_title(lang: &str, date: &str) -> String {
-    match lang {
-        "en" => format!("AI Frontier Daily | {date}"),
-        _ => format!("AI 前沿日报 | {date}"),
-    }
+pub fn digest_title(task_name: &str, date: &str) -> String {
+    format!("{task_name} | {date}")
 }
 
 /// 生成（或强制重新生成）当日日报。
 /// `force=false`（定时路径）：当日已存在任务则跳过；`force=true`（手动路径）：新建任务并覆盖当日文章。
 pub async fn generate(
     state: &AppState,
+    task: &news_tasks::Model,
     trigger: &str,
     force: bool,
+    scheduled_date: Option<&str>,
 ) -> anyhow::Result<digest_jobs::Model> {
-    let Ok(_guard) = digest_lock().try_lock() else {
-        anyhow::bail!("日报生成已在进行中");
-    };
+    let _guard = digest_lock().lock().await;
 
     let db = state.db();
     let settings = load_settings(&db).await?;
-    let date = local_date_string(state.cfg.stats_tz_offset_hours);
+    let date = scheduled_date
+        .map(str::to_string)
+        .unwrap_or_else(|| local_date_string(state.cfg.stats_tz_offset_hours));
 
     if !force {
         let existing = digest_jobs::Entity::find()
-            .filter(digest_jobs::Column::DigestDate.eq(&date))
+            .filter(
+                Condition::all()
+                    .add(digest_jobs::Column::DigestDate.eq(&date))
+                    .add(digest_jobs::Column::NewsTaskId.eq(task.id)),
+            )
             .one(&db)
             .await?;
         if let Some(job) = existing {
@@ -54,17 +57,36 @@ pub async fn generate(
         }
     }
 
+    let scheduled_publish_at =
+        if task.publish_mode.as_deref() == Some(news_tasks::PUBLISH_MODE_SCHEDULED) {
+            Some(
+                tasks::scheduled_utc(
+                    &date,
+                    task.publish_time
+                        .as_deref()
+                        .ok_or_else(|| anyhow::anyhow!("任务发布时间缺失"))?,
+                    state.cfg.stats_tz_offset_hours,
+                )
+                .ok_or_else(|| anyhow::anyhow!("任务发布时间无效"))?
+                .into(),
+            )
+        } else {
+            None
+        };
     let job = digest_jobs::ActiveModel {
         digest_date: Set(date.clone()),
         trigger: Set(trigger.to_string()),
         status: Set(digest_jobs::STATUS_RUNNING.to_string()),
         started_at: Set(Utc::now().into()),
+        news_task_id: Set(Some(task.id)),
+        task_name: Set(Some(task.name.clone())),
+        scheduled_publish_at: Set(scheduled_publish_at),
         ..Default::default()
     }
     .insert(&db)
     .await?;
 
-    match run_generation(state, &db, &settings, &date).await {
+    match run_generation(state, &db, &settings, task, &date).await {
         Ok(outcome) => {
             let mut model: digest_jobs::ActiveModel = job.into();
             model.status = Set(digest_jobs::STATUS_SUCCESS.to_string());
@@ -103,6 +125,7 @@ async fn run_generation(
     state: &AppState,
     db: &DatabaseConnection,
     settings: &NewsSettings,
+    task: &news_tasks::Model,
     date: &str,
 ) -> anyhow::Result<GenerationOutcome> {
     // LLM 配置检查
@@ -136,12 +159,15 @@ async fn run_generation(
         anyhow::anyhow!("LLM 输出无法解析为日报 JSON：{head}")
     })?;
     doc.date = date.to_string();
-    doc.title_zh = digest_title("zh", date);
-    doc.title_en = digest_title("en", date);
+    doc.title_zh = digest_title(&task.name, date);
+    doc.title_en = digest_title(
+        task.title_en.as_deref().unwrap_or("AI Frontier Daily"),
+        date,
+    );
 
     // 构建双语文章
     let category_id = seed::ensure_digest_category_id(db).await?;
-    let slug = digest_slug(date);
+    let slug = digest_slug(task.id, date);
     let markdown_zh = build_markdown(&doc, "zh", pool.raw_count);
     let markdown_en = build_markdown(&doc, "en", pool.raw_count);
 
@@ -159,7 +185,7 @@ async fn run_generation(
             markdown: &markdown_zh,
             category_id,
             group_id: &group_id,
-            publish: settings.auto_publish,
+            publish: false,
         },
     )
     .await?;
@@ -174,7 +200,7 @@ async fn run_generation(
             markdown: &markdown_en,
             category_id,
             group_id: &group_id,
-            publish: settings.auto_publish,
+            publish: false,
         },
     )
     .await?;
@@ -252,7 +278,7 @@ async fn upsert_post(
             let status = if input.publish {
                 posts::STATUS_PUBLISHED.to_string()
             } else {
-                row.status.clone()
+                posts::STATUS_DRAFT.to_string()
             };
             let mut model: posts::ActiveModel = row.into();
             model.title = Set(input.title.to_string());
@@ -264,7 +290,7 @@ async fn upsert_post(
             model.status = Set(status);
             model.category_id = Set(Some(input.category_id));
             model.updated_at = Set(now.into());
-            model.published_at = Set(published_at);
+            model.published_at = Set(if input.publish { published_at } else { None });
             model.update(db).await?
         }
         None => {
@@ -299,6 +325,48 @@ async fn upsert_post(
         }
     };
     Ok(saved)
+}
+
+/// 发布某次已成功生成的双语日报，并在执行记录中落下发布结果。
+pub async fn publish_job(
+    db: &DatabaseConnection,
+    job: digest_jobs::Model,
+) -> anyhow::Result<digest_jobs::Model> {
+    let now = Utc::now();
+    let published_at = job
+        .scheduled_publish_at
+        .ok_or_else(|| anyhow::anyhow!("日报没有计划发布时间"))?;
+    let result = async {
+        for post_id in [job.post_id_zh, job.post_id_en] {
+            let id = post_id.ok_or_else(|| anyhow::anyhow!("日报文章不存在"))?;
+            let row = posts::Entity::find_by_id(id)
+                .one(db)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("日报文章 #{id} 不存在"))?;
+            let mut model: posts::ActiveModel = row.into();
+            model.status = Set(posts::STATUS_PUBLISHED.to_string());
+            model.published_at = Set(Some(published_at));
+            model.updated_at = Set(now.into());
+            model.update(db).await?;
+        }
+        anyhow::Ok(())
+    }
+    .await;
+
+    let mut model: digest_jobs::ActiveModel = job.into();
+    match result {
+        Ok(()) => {
+            model.published_at = Set(Some(published_at));
+            model.publish_error = Set(None);
+            Ok(model.update(db).await?)
+        }
+        Err(error) => {
+            let message: String = error.to_string().chars().take(2000).collect();
+            model.publish_error = Set(Some(message.clone()));
+            model.update(db).await?;
+            Err(anyhow::anyhow!(message))
+        }
+    }
 }
 
 fn normalize_summary(raw: &str) -> Option<String> {
@@ -599,11 +667,14 @@ mod tests {
 
     #[test]
     fn slug_and_title() {
-        assert_eq!(digest_slug("2026-07-16"), "ai-daily-2026-07-16");
-        assert_eq!(digest_title("zh", "2026-07-16"), "AI 前沿日报 | 2026-07-16");
+        assert_eq!(digest_slug(7, "2026-07-16"), "ai-daily-7-2026-07-16");
         assert_eq!(
-            digest_title("en", "2026-07-16"),
-            "AI Frontier Daily | 2026-07-16"
+            digest_title("AI 晨报", "2026-07-16"),
+            "AI 晨报 | 2026-07-16"
+        );
+        assert_eq!(
+            digest_title("AI Morning Brief", "2026-07-16"),
+            "AI Morning Brief | 2026-07-16"
         );
     }
 }

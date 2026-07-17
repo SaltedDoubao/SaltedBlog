@@ -18,6 +18,11 @@ pub struct Model {
     pub post_id_en: Option<i32>,
     pub started_at: DateTimeWithTimeZone,
     pub finished_at: Option<DateTimeWithTimeZone>,
+    pub news_task_id: Option<i32>,
+    pub task_name: Option<String>,
+    pub scheduled_publish_at: Option<DateTimeWithTimeZone>,
+    pub published_at: Option<DateTimeWithTimeZone>,
+    pub publish_error: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

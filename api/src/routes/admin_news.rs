@@ -14,9 +14,9 @@ use sea_orm::{
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::entities::{digest_jobs, news_fetch_logs, news_items, news_sources};
+use crate::entities::{digest_jobs, news_fetch_logs, news_items, news_sources, news_tasks};
 use crate::error::{ApiError, ApiResult};
-use crate::news::{digest, fetch, fetcher, filter, local_date_string};
+use crate::news::{digest, fetch, fetcher, filter, local_date_string, tasks};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -29,10 +29,308 @@ pub fn router() -> Router<AppState> {
         .route("/news/sources/{id}/test", post(test_source))
         .route("/news/sources/{id}/fetch", post(fetch_one))
         .route("/news/fetch-all", post(fetch_all_now))
+        .route("/news/tasks", get(list_tasks).post(create_task))
+        .route(
+            "/news/tasks/{id}",
+            axum::routing::put(update_task).delete(delete_task),
+        )
+        .route("/news/tasks/{id}/toggle", axum::routing::put(toggle_task))
+        .route("/news/tasks/{id}/run", post(run_task))
         .route("/news/items", get(list_items))
         .route("/news/logs", get(list_logs))
         .route("/news/jobs", get(list_jobs))
-        .route("/news/digest/generate", post(generate_digest))
+}
+
+// ---------- 定时任务 CRUD ----------
+
+#[derive(Deserialize)]
+struct TaskInput {
+    name: String,
+    task_type: String,
+    enabled: Option<bool>,
+    start_time: Option<String>,
+    interval_hours: Option<i32>,
+    generation_time: Option<String>,
+    publish_time: Option<String>,
+    title_en: Option<String>,
+    publish_mode: Option<String>,
+}
+
+struct ValidatedTask {
+    name: String,
+    task_type: String,
+    enabled: bool,
+    start_time: Option<String>,
+    interval_hours: Option<i32>,
+    generation_time: Option<String>,
+    publish_time: Option<String>,
+    title_en: Option<String>,
+    publish_mode: Option<String>,
+}
+
+fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
+    let name = input.name.trim().to_string();
+    if name.is_empty() || name.chars().count() > 128 {
+        return Err(ApiError::bad_request("任务名称长度应为 1-128 个字符"));
+    }
+    let valid_time = |value: &Option<String>, label: &str| -> Result<String, ApiError> {
+        let value = value.as_deref().unwrap_or("").trim();
+        if tasks::parse_hhmm(value).is_none() {
+            return Err(ApiError::bad_request(format!("{label}格式应为 HH:MM")));
+        }
+        Ok(value.to_string())
+    };
+    let (start_time, interval_hours, generation_time, publish_time, title_en, publish_mode) =
+        match input.task_type.as_str() {
+            news_tasks::TYPE_FETCH => {
+                if input
+                    .generation_time
+                    .as_deref()
+                    .is_some_and(|value| !value.is_empty())
+                    || input
+                        .publish_time
+                        .as_deref()
+                        .is_some_and(|value| !value.is_empty())
+                    || input
+                        .title_en
+                        .as_deref()
+                        .is_some_and(|value| !value.is_empty())
+                    || input
+                        .publish_mode
+                        .as_deref()
+                        .is_some_and(|value| !value.is_empty())
+                {
+                    return Err(ApiError::bad_request("采集任务不能包含整理发布配置"));
+                }
+                let interval = input.interval_hours.unwrap_or(0);
+                if !(1..=24).contains(&interval) {
+                    return Err(ApiError::bad_request("采集间隔应为 1-24 小时"));
+                }
+                (
+                    Some(valid_time(&input.start_time, "起始时间")?),
+                    Some(interval),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            }
+            news_tasks::TYPE_DIGEST => {
+                if input
+                    .start_time
+                    .as_deref()
+                    .is_some_and(|value| !value.is_empty())
+                    || input.interval_hours.is_some()
+                {
+                    return Err(ApiError::bad_request("整理发布任务不能包含采集配置"));
+                }
+                let generation = valid_time(&input.generation_time, "生成时间")?;
+                let title_en = input.title_en.as_deref().unwrap_or("").trim().to_string();
+                if title_en.is_empty() || title_en.chars().count() > 300 {
+                    return Err(ApiError::bad_request("英文日报标题长度应为 1-300 个字符"));
+                }
+                let mode = input.publish_mode.as_deref().unwrap_or("");
+                let publish = match mode {
+                    news_tasks::PUBLISH_MODE_DRAFT => {
+                        if input
+                            .publish_time
+                            .as_deref()
+                            .is_some_and(|value| !value.is_empty())
+                        {
+                            return Err(ApiError::bad_request("保存草稿模式不能设置发布时间"));
+                        }
+                        None
+                    }
+                    news_tasks::PUBLISH_MODE_SCHEDULED => {
+                        let publish = valid_time(&input.publish_time, "发布时间")?;
+                        if tasks::parse_hhmm(&publish) <= tasks::parse_hhmm(&generation) {
+                            return Err(ApiError::bad_request("发布时间必须晚于当天生成时间"));
+                        }
+                        Some(publish)
+                    }
+                    _ => return Err(ApiError::bad_request("无效的生成后处理方式")),
+                };
+                (
+                    None,
+                    None,
+                    Some(generation),
+                    publish,
+                    Some(title_en),
+                    Some(mode.to_string()),
+                )
+            }
+            _ => return Err(ApiError::bad_request("无效的任务类型")),
+        };
+    Ok(ValidatedTask {
+        name,
+        task_type: input.task_type.clone(),
+        enabled: input.enabled.unwrap_or(false),
+        start_time,
+        interval_hours,
+        generation_time,
+        publish_time,
+        title_en,
+        publish_mode,
+    })
+}
+
+async fn list_tasks(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let items = news_tasks::Entity::find()
+        .order_by_asc(news_tasks::Column::Id)
+        .all(&state.db())
+        .await?;
+    Ok(Json(json!({ "items": items })))
+}
+
+async fn create_task(
+    State(state): State<AppState>,
+    Json(input): Json<TaskInput>,
+) -> ApiResult<impl IntoResponse> {
+    let task = validate_task(&input)?;
+    let now = Utc::now();
+    let row = news_tasks::ActiveModel {
+        name: Set(task.name),
+        task_type: Set(task.task_type),
+        enabled: Set(task.enabled),
+        start_time: Set(task.start_time),
+        interval_hours: Set(task.interval_hours),
+        generation_time: Set(task.generation_time),
+        publish_time: Set(task.publish_time),
+        title_en: Set(task.title_en),
+        publish_mode: Set(task.publish_mode),
+        last_scheduled_at: Set(None),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+        ..Default::default()
+    }
+    .insert(&state.db())
+    .await?;
+    Ok((StatusCode::CREATED, Json(json!({ "id": row.id }))))
+}
+
+async fn update_task(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+    Json(input): Json<TaskInput>,
+) -> ApiResult<impl IntoResponse> {
+    let row = news_tasks::Entity::find_by_id(id)
+        .one(&state.db())
+        .await?
+        .ok_or_else(ApiError::not_found)?;
+    if row.task_type != input.task_type {
+        return Err(ApiError::bad_request("任务创建后不能修改类型"));
+    }
+    let task = validate_task(&input)?;
+    let schedule_changed =
+        row.start_time != task.start_time || row.interval_hours != task.interval_hours;
+    let mut model: news_tasks::ActiveModel = row.into();
+    model.name = Set(task.name);
+    model.task_type = Set(task.task_type);
+    model.enabled = Set(task.enabled);
+    model.start_time = Set(task.start_time);
+    model.interval_hours = Set(task.interval_hours);
+    model.generation_time = Set(task.generation_time);
+    model.publish_time = Set(task.publish_time);
+    model.title_en = Set(task.title_en);
+    model.publish_mode = Set(task.publish_mode);
+    if schedule_changed {
+        model.last_scheduled_at = Set(None);
+    }
+    model.updated_at = Set(Utc::now().into());
+    model.update(&state.db()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_task(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+) -> ApiResult<impl IntoResponse> {
+    let result = news_tasks::Entity::delete_by_id(id)
+        .exec(&state.db())
+        .await?;
+    if result.rows_affected == 0 {
+        return Err(ApiError::not_found());
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct ToggleInput {
+    enabled: bool,
+}
+
+async fn toggle_task(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+    Json(input): Json<ToggleInput>,
+) -> ApiResult<impl IntoResponse> {
+    let row = news_tasks::Entity::find_by_id(id)
+        .one(&state.db())
+        .await?
+        .ok_or_else(ApiError::not_found)?;
+    let mut model: news_tasks::ActiveModel = row.into();
+    model.enabled = Set(input.enabled);
+    model.updated_at = Set(Utc::now().into());
+    model.update(&state.db()).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize, Default)]
+struct RunTaskInput {
+    #[serde(default)]
+    force: bool,
+}
+
+async fn run_task(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+    input: Option<Json<RunTaskInput>>,
+) -> ApiResult<impl IntoResponse> {
+    let task = news_tasks::Entity::find_by_id(id)
+        .one(&state.db())
+        .await?
+        .ok_or_else(ApiError::not_found)?;
+    let force = input.map(|Json(value)| value.force).unwrap_or(false);
+    if task.task_type == news_tasks::TYPE_DIGEST && !force {
+        let date = local_date_string(state.cfg.stats_tz_offset_hours);
+        let existing = digest_jobs::Entity::find()
+            .filter(
+                Condition::all()
+                    .add(digest_jobs::Column::NewsTaskId.eq(task.id))
+                    .add(digest_jobs::Column::DigestDate.eq(date)),
+            )
+            .count(&state.db())
+            .await?;
+        if existing > 0 {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                "该任务今天已有执行记录，强制执行将覆盖当天文章",
+            ));
+        }
+    }
+    let task_type = task.task_type.clone();
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        if task_type == news_tasks::TYPE_FETCH {
+            let summaries = fetch::fetch_all(&state_clone.db()).await;
+            tracing::info!(
+                task_id = task.id,
+                sources = summaries.len(),
+                "manual fetch task finished"
+            );
+        } else if let Err(error) = digest::generate(
+            &state_clone,
+            &task,
+            digest_jobs::TRIGGER_MANUAL,
+            force,
+            None,
+        )
+        .await
+        {
+            tracing::warn!(task_id = task.id, "manual digest task rejected: {error}");
+        }
+    });
+    Ok((StatusCode::ACCEPTED, Json(json!({ "accepted": true }))))
 }
 
 // ---------- 信源 CRUD ----------
@@ -398,6 +696,11 @@ async fn list_jobs(
                 "post_id_en": job.post_id_en,
                 "started_at": job.started_at,
                 "finished_at": job.finished_at,
+                "news_task_id": job.news_task_id,
+                "task_name": job.task_name,
+                "scheduled_publish_at": job.scheduled_publish_at,
+                "published_at": job.published_at,
+                "publish_error": job.publish_error,
             })
         })
         .collect();
@@ -406,52 +709,66 @@ async fn list_jobs(
     })))
 }
 
-// ---------- 手动生成日报 ----------
-
-#[derive(Deserialize, Default)]
-struct GenerateInput {
-    #[serde(default)]
-    force: bool,
-}
-
-/// 生成在后台任务中执行（避免浏览器断开导致中断），前端轮询任务列表查看进度
-async fn generate_digest(
-    State(state): State<AppState>,
-    input: Option<Json<GenerateInput>>,
-) -> ApiResult<impl IntoResponse> {
-    let force = input.map(|Json(v)| v.force).unwrap_or(false);
-    let date = local_date_string(state.cfg.stats_tz_offset_hours);
-
-    if !force {
-        let existing = digest_jobs::Entity::find()
-            .filter(digest_jobs::Column::DigestDate.eq(&date))
-            .count(&state.db())
-            .await?;
-        if existing > 0 {
-            return Err(ApiError::new(
-                StatusCode::CONFLICT,
-                "当日已存在日报任务，勾选「强制重新生成」可覆盖当日文章",
-            ));
-        }
-    }
-
-    let state_clone = state.clone();
-    tokio::spawn(async move {
-        match digest::generate(&state_clone, digest_jobs::TRIGGER_MANUAL, force).await {
-            Ok(job) => tracing::info!("manual digest job {} -> {}", job.id, job.status),
-            Err(e) => tracing::warn!("manual digest generation rejected: {e}"),
-        }
-    });
-
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(json!({ "accepted": true, "date": date })),
-    ))
-}
-
 async fn source_name_map(
     state: &AppState,
 ) -> Result<std::collections::HashMap<i32, String>, ApiError> {
     let sources = news_sources::Entity::find().all(&state.db()).await?;
     Ok(sources.into_iter().map(|s| (s.id, s.name)).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_fetch_task_fields() {
+        let input = TaskInput {
+            name: "采集".into(),
+            task_type: news_tasks::TYPE_FETCH.into(),
+            enabled: Some(true),
+            start_time: Some("08:00".into()),
+            interval_hours: Some(2),
+            generation_time: None,
+            publish_time: None,
+            title_en: None,
+            publish_mode: None,
+        };
+        let task = validate_task(&input).unwrap();
+        assert_eq!(task.start_time.as_deref(), Some("08:00"));
+        assert!(task.generation_time.is_none());
+    }
+
+    #[test]
+    fn rejects_cross_day_digest_schedule() {
+        let input = TaskInput {
+            name: "日报".into(),
+            task_type: news_tasks::TYPE_DIGEST.into(),
+            enabled: Some(false),
+            start_time: None,
+            interval_hours: None,
+            generation_time: Some("20:00".into()),
+            publish_time: Some("08:00".into()),
+            title_en: Some("AI Daily".into()),
+            publish_mode: Some(news_tasks::PUBLISH_MODE_SCHEDULED.into()),
+        };
+        assert!(validate_task(&input).is_err());
+    }
+
+    #[test]
+    fn draft_digest_has_no_publish_time() {
+        let input = TaskInput {
+            name: "日报".into(),
+            task_type: news_tasks::TYPE_DIGEST.into(),
+            enabled: Some(false),
+            start_time: None,
+            interval_hours: None,
+            generation_time: Some("08:00".into()),
+            publish_time: None,
+            title_en: Some("AI Daily".into()),
+            publish_mode: Some(news_tasks::PUBLISH_MODE_DRAFT.into()),
+        };
+        let task = validate_task(&input).unwrap();
+        assert_eq!(task.title_en.as_deref(), Some("AI Daily"));
+        assert!(task.publish_time.is_none());
+    }
 }

@@ -6,6 +6,7 @@ pub mod mfa_recovery_codes;
 pub mod news_fetch_logs;
 pub mod news_items;
 pub mod news_sources;
+pub mod news_tasks;
 pub mod page_views;
 pub mod post_tags;
 pub mod posts;
