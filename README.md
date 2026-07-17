@@ -149,7 +149,9 @@ uploads/
 | `STATS_TZ_OFFSET_HOURS` | 统计时区偏移（北京=8） | 8 |
 | `NEWS_LLM_API_KEY` | AI 日报 LLM 的 API Key（OpenAI 兼容，不落库） | 空 |
 
-生产环境使用 Docker Secrets、最小权限 PostgreSQL 双角色和独立迁移任务。VPN、私有 DNS、旧数据兼容和宿主机加固步骤见 [`deploy/HARDENING.md`](deploy/HARDENING.md)。
+生产环境使用 Docker Secrets、最小权限 PostgreSQL 双角色和独立迁移任务。传统 VPN/私有 DNS 部署见
+[`deploy/HARDENING.md`](deploy/HARDENING.md)；希望从任意浏览器安全访问后台时，使用
+[`deploy/CLOUDFLARE_ACCESS.md`](deploy/CLOUDFLARE_ACCESS.md) 中的 Cloudflare Tunnel + Access 方案。
 
 ## AI 情报日报
 

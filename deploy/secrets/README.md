@@ -10,6 +10,7 @@
 - `admin_password`：首次创建管理员使用，至少 15 个字符
 - `mfa_encryption_key`、`backup_signing_key`：分别生成的 32 字节随机值
 - `news_llm_api_key`：不使用 LLM 时创建空文件
+- `cloudflare_tunnel_token`：仅使用 `docker-compose.cloudflare.yml` 时需要，内容为 Cloudflare 控制台创建远程管理 Tunnel 后提供的令牌
 
 Linux/macOS 可用 `openssl rand -base64 32` 生成密码或密钥。设置目录权限：
 
