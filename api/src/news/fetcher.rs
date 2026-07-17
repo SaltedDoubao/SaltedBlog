@@ -50,18 +50,27 @@ pub async fn fetch_source_items(source: &news_sources::Model) -> FetchOutcome {
 // ---------- RSS / Atom ----------
 
 async fn fetch_rss(url: &str, max_items: usize) -> FetchOutcome {
-    let (status_code, bytes) =
+    let response =
         match crate::outbound::get_bytes(url, 8 * 1024 * 1024, std::time::Duration::from_secs(30))
             .await
         {
             Ok(r) => r,
             Err(e) => return FetchOutcome::fail(format!("http error: {e}"), None),
         };
-    let status = status_code.as_u16() as i32;
-    if !status_code.is_success() {
-        return FetchOutcome::fail(format!("http status {status}"), Some(status));
+    let status = response.status.as_u16() as i32;
+    if !response.status.is_success() {
+        return FetchOutcome::fail(
+            format!(
+                "http status {status} after {} attempt(s)",
+                response.attempts
+            ),
+            Some(status),
+        );
     }
-    let feed = match feed_rs::parser::parse(&bytes[..]) {
+    if let Some(error) = empty_feed_error(&response.bytes, status) {
+        return FetchOutcome::fail(error, Some(status));
+    }
+    let feed = match feed_rs::parser::parse(&response.bytes[..]) {
         Ok(f) => f,
         Err(e) => return FetchOutcome::fail(format!("feed parse error: {e}"), Some(status)),
     };
@@ -116,6 +125,12 @@ async fn fetch_rss(url: &str, max_items: usize) -> FetchOutcome {
     }
 }
 
+fn empty_feed_error(bytes: &[u8], status: i32) -> Option<String> {
+    bytes
+        .is_empty()
+        .then(|| format!("feed response body is empty (HTTP {status})"))
+}
+
 // ---------- GitHub Trending（HTML 解析） ----------
 
 async fn fetch_github_trending(source: &news_sources::Model, max_items: usize) -> FetchOutcome {
@@ -135,18 +150,24 @@ async fn fetch_github_trending(source: &news_sources::Model, max_items: usize) -
         None => format!("https://github.com/trending?since={since}"),
     };
 
-    let (status_code, bytes) =
+    let response =
         match crate::outbound::get_bytes(&url, 8 * 1024 * 1024, std::time::Duration::from_secs(30))
             .await
         {
             Ok(r) => r,
             Err(e) => return FetchOutcome::fail(format!("http error: {e}"), None),
         };
-    let status = status_code.as_u16() as i32;
-    if !status_code.is_success() {
-        return FetchOutcome::fail(format!("http status {status}"), Some(status));
+    let status = response.status.as_u16() as i32;
+    if !response.status.is_success() {
+        return FetchOutcome::fail(
+            format!(
+                "http status {status} after {} attempt(s)",
+                response.attempts
+            ),
+            Some(status),
+        );
     }
-    let html = match String::from_utf8(bytes) {
+    let html = match String::from_utf8(response.bytes) {
         Ok(t) => t,
         Err(e) => return FetchOutcome::fail(format!("read body error: {e}"), Some(status)),
     };
@@ -259,6 +280,15 @@ mod tests {
         assert_eq!(parse_count(" 12,345 "), 12345);
         assert_eq!(parse_count("678 stars today"), 678);
         assert_eq!(parse_count("no digits"), 0);
+    }
+
+    #[test]
+    fn empty_feed_body_has_actionable_error() {
+        assert_eq!(
+            empty_feed_error(&[], 200).as_deref(),
+            Some("feed response body is empty (HTTP 200)")
+        );
+        assert!(empty_feed_error(b"<rss />", 200).is_none());
     }
 
     #[test]

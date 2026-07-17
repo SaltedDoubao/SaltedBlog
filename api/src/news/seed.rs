@@ -116,7 +116,7 @@ async fn seed_sources(db: &DatabaseConnection) -> anyhow::Result<()> {
         SeedSource {
             name: "V2EX 热门",
             source_type: news_sources::TYPE_RSS,
-            url: "https://www.v2ex.com/feed/tab/hot.xml",
+            url: "https://www.v2ex.com/index.xml",
             category: "社区热榜",
             language: "zh",
             weight: 0.8,
