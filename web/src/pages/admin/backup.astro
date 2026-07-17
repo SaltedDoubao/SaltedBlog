@@ -62,7 +62,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
 </style>
 
 <script>
-  import { adminFetch, confirmDanger, escapeHtml, toast } from '@/lib/admin-client';
+  import { adminFetch, confirmDanger, escapeHtml, stepUp, toast } from '@/lib/admin-client';
 
   interface BackupItem {
     name: string;
@@ -141,7 +141,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
             <td class="mono">${escapeHtml(formatTime(row.created_at))}</td>
             <td>
               <div class="cell-actions">
-                <a class="btn btn--sm" href="/api/admin/backups/${encodeURIComponent(row.name)}/download">下载</a>
+                <button class="btn btn--sm" data-download="${encodeURIComponent(row.name)}" type="button">下载</button>
                 <button class="btn btn--sm" data-restore="${encodeURIComponent(row.name)}" type="button">恢复</button>
                 <button class="btn btn--sm btn--danger" data-del="${encodeURIComponent(row.name)}" type="button">删除</button>
               </div>
@@ -155,6 +155,9 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
       );
       tbody.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((btn) =>
         btn.addEventListener('click', () => onDelete(decodeURIComponent(btn.dataset.del!)))
+      );
+      tbody.querySelectorAll<HTMLButtonElement>('[data-download]').forEach((btn) =>
+        btn.addEventListener('click', () => onDownload(decodeURIComponent(btn.dataset.download!)))
       );
       if (busy) setBusy(true);
     } catch (err) {
@@ -208,6 +211,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     setBusy(true);
     showStatus('正在恢复（含安全备份）… 请勿关闭页面');
     try {
+      await stepUp();
       const { job_id } = await adminFetch<{ job_id: string }>(
         `/api/admin/backups/${encodeURIComponent(name)}/restore`,
         { method: 'POST' }
@@ -233,6 +237,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     if (busy) return;
     if (!confirmDanger(`确认删除备份「${name}」？`)) return;
     try {
+      await stepUp();
       await adminFetch(`/api/admin/backups/${encodeURIComponent(name)}`, { method: 'DELETE' });
       toast('已删除');
       await load();
@@ -246,6 +251,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     setBusy(true);
     showStatus(`正在上传 ${file.name}…`);
     try {
+      await stepUp();
       const form = new FormData();
       form.append('file', file);
       const res = await adminFetch<{ name: string }>('/api/admin/backups/upload', {
@@ -261,6 +267,15 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     } finally {
       setBusy(false);
       uploadInput.value = '';
+    }
+  }
+
+  async function onDownload(name: string) {
+    try {
+      await stepUp();
+      location.href = `/api/admin/backups/${encodeURIComponent(name)}/download`;
+    } catch (err) {
+      toast(`验证失败：${(err as Error).message}`, 'error');
     }
   }
 

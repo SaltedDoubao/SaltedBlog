@@ -1,0 +1,154 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="日志中心" eyebrow="SECURITY / OBSERVABILITY" active="logs">
+  <div slot="actions"><button class="btn btn--sm" id="exportBtn" type="button">导出筛选结果</button></div>
+
+  <div class="stat-cards">
+    <div class="stat-card"><div class="stat-card__label">24H EVENTS</div><div class="stat-card__value" id="total24">—</div></div>
+    <div class="stat-card"><div class="stat-card__label">BLOCKED / 24H</div><div class="stat-card__value" id="blocked24">—</div></div>
+    <div class="stat-card"><div class="stat-card__label">SECURITY / 7D</div><div class="stat-card__value" id="security7">—</div></div>
+    <div class="stat-card"><div class="stat-card__label">ERROR / 7D</div><div class="stat-card__value" id="errors7">—</div></div>
+  </div>
+
+  <div class="admin-panel">
+    <div class="admin-panel__body log-filters">
+      <select class="input" id="categoryFilter" aria-label="分类">
+        <option value="">全部分类</option><option value="auth">认证</option><option value="security">安全</option>
+        <option value="audit">管理审计</option><option value="access">访问</option><option value="system">系统</option>
+        <option value="job">任务</option><option value="backup">备份</option>
+      </select>
+      <select class="input" id="levelFilter" aria-label="级别">
+        <option value="">全部级别</option><option value="info">INFO</option><option value="warn">WARN</option>
+        <option value="error">ERROR</option><option value="critical">CRITICAL</option>
+      </select>
+      <select class="input" id="outcomeFilter" aria-label="结果">
+        <option value="">全部结果</option><option value="success">成功</option><option value="failure">失败</option><option value="blocked">已拦截</option>
+      </select>
+      <input class="input" id="queryFilter" maxlength="100" placeholder="事件、请求 ID 或 IP…" />
+      <button class="btn btn--sm" id="refreshBtn" type="button">刷新</button>
+    </div>
+    <div class="log-table-wrap">
+      <table class="admin-table">
+        <thead><tr><th>时间</th><th>分类</th><th>级别</th><th>事件</th><th>结果</th><th>操作者 / IP</th><th>摘要</th></tr></thead>
+        <tbody id="logBody"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="log-load" id="loadSentinel">向下滚动加载更多</div>
+  </div>
+
+  <dialog class="log-dialog" id="detailDialog">
+    <button class="btn btn--sm log-dialog__close" id="detailClose" type="button">关闭</button>
+    <h2>EVENT DETAIL</h2>
+    <pre id="detailContent"></pre>
+  </dialog>
+</AdminLayout>
+
+<style>
+  .log-filters { display:grid; grid-template-columns:150px 130px 130px minmax(220px,1fr) auto; gap:10px; }
+  .log-table-wrap { overflow:auto; }
+  .log-table-wrap td { max-width:340px; }
+  .log-table-wrap tbody tr { cursor:pointer; }
+  .empty { text-align:center; color:var(--text-3); }
+  .log-load { padding:14px; text-align:center; color:var(--text-3); font-size:12px; }
+  .log-level--warn,.log-level--error,.log-level--critical { color:var(--danger); font-weight:700; }
+  .log-outcome--success { color:#25944a; } .log-outcome--blocked,.log-outcome--failure { color:var(--danger); }
+  .log-dialog { width:min(820px,calc(100vw - 40px)); max-height:80vh; border:2px solid var(--border-strong); background:var(--surface); color:var(--text); padding:24px; }
+  .log-dialog::backdrop { background:rgba(0,0,0,.7); } .log-dialog pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; }
+  .log-dialog__close { float:right; }
+  @media(max-width:900px){.log-filters{grid-template-columns:1fr 1fr}.log-filters input{grid-column:1/-1}}
+</style>
+
+<script>
+  import { adminFetch, escapeHtml, stepUp, toast } from '@/lib/admin-client';
+
+  interface LogRow {
+    id:number; occurred_at:string; category:string; level:string; event_type:string; outcome:string;
+    actor_name:string|null; source_ip:string|null; request_id:string|null; summary:string;
+  }
+  interface ListResponse { items:LogRow[]; next_cursor:string|null; has_more:boolean }
+  interface Summary { last_24h:number; blocked_24h:number; categories:Record<string,number>; levels:Record<string,number> }
+
+  const body = document.getElementById('logBody')!;
+  const sentinel = document.getElementById('loadSentinel')!;
+  const category = document.getElementById('categoryFilter') as HTMLSelectElement;
+  const level = document.getElementById('levelFilter') as HTMLSelectElement;
+  const outcome = document.getElementById('outcomeFilter') as HTMLSelectElement;
+  const query = document.getElementById('queryFilter') as HTMLInputElement;
+  const dialog = document.getElementById('detailDialog') as HTMLDialogElement;
+  const detailContent = document.getElementById('detailContent')!;
+  let cursor:string|null = null;
+  let loading = false;
+  let hasMore = true;
+  let generation = 0;
+  let debounce:number|undefined;
+  let listController:AbortController|null = null;
+  let summaryEtag:string|null = null;
+
+  function params(includeCursor=true) {
+    const p = new URLSearchParams({ limit:'50' });
+    if (category.value) p.set('category', category.value);
+    if (level.value) p.set('level', level.value);
+    if (outcome.value) p.set('outcome', outcome.value);
+    if (query.value.trim()) p.set('q', query.value.trim());
+    if (includeCursor && cursor) p.set('cursor', cursor);
+    return p;
+  }
+
+  function rowHtml(row:LogRow) {
+    const time = new Date(row.occurred_at).toLocaleString('zh-CN',{hour12:false});
+    return `<tr data-id="${row.id}"><td class="mono">${escapeHtml(time)}</td><td>${escapeHtml(row.category)}</td>
+      <td class="mono log-level--${escapeHtml(row.level)}">${escapeHtml(row.level)}</td><td class="mono">${escapeHtml(row.event_type)}</td>
+      <td class="log-outcome--${escapeHtml(row.outcome)}">${escapeHtml(row.outcome)}</td>
+      <td>${escapeHtml(row.actor_name ?? '—')}<br><small class="mono">${escapeHtml(row.source_ip ?? '—')}</small></td>
+      <td title="${escapeHtml(row.request_id ?? '')}">${escapeHtml(row.summary)}</td></tr>`;
+  }
+
+  function bindDetails() {
+    body.querySelectorAll<HTMLTableRowElement>('tr[data-id]').forEach((row) => row.addEventListener('click', async () => {
+      try { const item = await adminFetch(`/api/admin/logs/${row.dataset.id}`); detailContent.textContent = JSON.stringify(item,null,2); dialog.showModal(); }
+      catch(err){ toast(`详情加载失败：${(err as Error).message}`,'error'); }
+    }));
+  }
+
+  async function load(reset=false) {
+    if (reset) {
+      listController?.abort(); loading=false; cursor=null; hasMore=true; generation++;
+      body.innerHTML='<tr><td colspan="7" class="empty">加载中…</td></tr>';
+    }
+    if (loading || (!reset && !hasMore)) return;
+    const ownGeneration=generation; loading=true;
+    const controller=new AbortController(); listController=controller;
+    try {
+      const res=await adminFetch<ListResponse>(`/api/admin/logs?${params()}`,{signal:controller.signal});
+      if(ownGeneration!==generation)return;
+      if(reset) body.innerHTML='';
+      body.insertAdjacentHTML('beforeend',res.items.map(rowHtml).join(''));
+      if(!body.children.length) body.innerHTML='<tr><td colspan="7" class="empty">没有匹配日志</td></tr>';
+      cursor=res.next_cursor; hasMore=res.has_more; sentinel.textContent=hasMore?'向下滚动加载更多':'已加载全部'; bindDetails();
+    } catch(err){ if((err as Error).name!=='AbortError')toast(`日志加载失败：${(err as Error).message}`,'error'); }
+    finally{if(listController===controller){listController=null;loading=false}}
+  }
+
+  async function loadSummary(){
+    try{
+      const headers=new Headers();if(summaryEtag)headers.set('If-None-Match',summaryEtag);
+      const response=await fetch('/api/admin/logs/summary',{headers,credentials:'same-origin'});
+      if(response.status===304)return;if(response.status===401){location.href='/admin/login';return}if(!response.ok)throw new Error(`HTTP ${response.status}`);
+      summaryEtag=response.headers.get('ETag');const s=await response.json() as Summary;
+      document.getElementById('total24')!.textContent=String(s.last_24h);
+      document.getElementById('blocked24')!.textContent=String(s.blocked_24h);
+      document.getElementById('security7')!.textContent=String(s.categories.security??0);
+      document.getElementById('errors7')!.textContent=String((s.levels.error??0)+(s.levels.critical??0));
+    }catch{/* 保留旧摘要 */}
+  }
+  function schedule(){window.clearTimeout(debounce);debounce=window.setTimeout(()=>load(true),300)}
+  [category,level,outcome].forEach(el=>el.addEventListener('change',()=>load(true))); query.addEventListener('input',schedule);
+  document.getElementById('refreshBtn')!.addEventListener('click',()=>{load(true);loadSummary()});
+  document.getElementById('detailClose')!.addEventListener('click',()=>dialog.close());
+  document.getElementById('exportBtn')!.addEventListener('click',async()=>{try{await stepUp();const p=params(false);p.set('format','csv');location.href=`/api/admin/logs/export?${p}`}catch(err){toast((err as Error).message,'error')}});
+  new IntersectionObserver((entries)=>{if(entries[0]?.isIntersecting)load()},{rootMargin:'300px'}).observe(sentinel);
+  Promise.all([load(true),loadSummary()]);
+  window.setInterval(()=>{if(document.visibilityState==='visible'){loadSummary();load(true)}},30_000);
+</script>

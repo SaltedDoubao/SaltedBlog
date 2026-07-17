@@ -1,12 +1,21 @@
 /// 后台页面浏览器端共用工具（在 <script> 中 import）
 
 export async function adminFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+  const unsafe = init?.method && !['GET', 'HEAD', 'OPTIONS'].includes(init.method.toUpperCase());
+  const csrfName = location.protocol === 'https:' ? '__Host-sb_csrf' : 'sb_csrf';
+  const csrf = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${csrfName}=`))
+    ?.slice(csrfName.length + 1);
+  const headers = new Headers(init?.headers);
+  if (init?.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (unsafe && csrf) headers.set('X-CSRF-Token', csrf);
   const res = await fetch(path, {
-    headers:
-      init?.body && !(init.body instanceof FormData)
-        ? { 'Content-Type': 'application/json', ...(init?.headers ?? {}) }
-        : init?.headers,
     ...init,
+    headers,
   });
   if (res.status === 401) {
     location.href = '/admin/login';
@@ -25,6 +34,17 @@ export async function adminFetch<T = unknown>(path: string, init?: RequestInit):
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
+}
+
+export async function stepUp(): Promise<void> {
+  const password = window.prompt('高危操作需要再次验证。请输入当前密码：');
+  if (!password) throw new Error('已取消二次验证');
+  const code = window.prompt('请输入验证器中的 6 位动态码：');
+  if (!code) throw new Error('已取消二次验证');
+  await adminFetch('/api/auth/step-up', {
+    method: 'POST',
+    body: JSON.stringify({ password, code }),
+  });
 }
 
 let toastWrap: HTMLElement | null = null;

@@ -21,15 +21,7 @@ if (loggedIn) {
     <meta name="robots" content="noindex, nofollow" />
     <title>登录 · SaltedBlog Admin</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <script is:inline>
-      (function () {
-        var theme = localStorage.getItem('sb-theme');
-        if (theme !== 'light' && theme !== 'dark') {
-          theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-        document.documentElement.dataset.theme = theme;
-      })();
-    </script>
+    <script is:inline src="/admin-theme.js"></script>
   </head>
   <body>
     <div class="login-scene">
@@ -63,6 +55,24 @@ if (loggedIn) {
             进入终端 / LOGIN ↘
           </button>
         </form>
+        <form id="mfaForm" hidden>
+          <div id="enrollInfo" hidden>
+            <p class="login-help">首次登录必须绑定验证器。请在身份验证器中手动添加下方密钥：</p>
+            <code class="mfa-secret" id="mfaSecret"></code>
+            <p class="login-help">类型：基于时间（TOTP）／6 位／30 秒</p>
+          </div>
+          <div class="form-field">
+            <label class="label" for="mfaCode">TOTP / RECOVERY CODE</label>
+            <input class="input" id="mfaCode" inputmode="numeric" autocomplete="one-time-code" required />
+          </div>
+          <div class="login-error mono" id="mfaError" hidden></div>
+          <button class="btn btn--primary btn--cut login-submit" type="submit" id="mfaSubmit">验证 / VERIFY ↘</button>
+        </form>
+        <div id="recoveryBox" hidden>
+          <p class="login-help">请立即保存以下一次性恢复码。关闭后无法再次查看：</p>
+          <pre class="recovery-codes" id="recoveryCodes"></pre>
+          <button class="btn btn--primary login-submit" type="button" id="continueBtn">我已安全保存</button>
+        </div>
       </div>
     </div>
 
@@ -142,12 +152,23 @@ if (loggedIn) {
         width: 100%;
         margin-top: 20px;
       }
+      .login-help { color:#aeb4b7; font-size:12px; line-height:1.6; }
+      .mfa-secret,.recovery-codes { display:block; padding:12px; margin:10px 0 16px; background:#090b0c; border:1px solid #3a4044; color:var(--primary); overflow-wrap:anywhere; user-select:all; }
+      .recovery-codes { line-height:1.7; columns:2; }
     </style>
 
     <script>
       const form = document.getElementById('loginForm') as HTMLFormElement;
       const errorEl = document.getElementById('loginError') as HTMLElement;
       const submitBtn = document.getElementById('loginSubmit') as HTMLButtonElement;
+      const mfaForm = document.getElementById('mfaForm') as HTMLFormElement;
+      const mfaCode = document.getElementById('mfaCode') as HTMLInputElement;
+      const mfaError = document.getElementById('mfaError')!;
+      const enrollInfo = document.getElementById('enrollInfo')!;
+      const mfaSecret = document.getElementById('mfaSecret')!;
+      const recoveryBox = document.getElementById('recoveryBox')!;
+      const recoveryCodes = document.getElementById('recoveryCodes')!;
+      let nextStep: 'totp' | 'enroll' = 'totp';
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -163,6 +184,19 @@ if (loggedIn) {
               password: data.get('password'),
             }),
           });
+          if (res.status === 202) {
+            const body = await res.json();
+            nextStep = body.next;
+            form.hidden = true;
+            mfaForm.hidden = false;
+            if (nextStep === 'enroll') {
+              const setup = await fetch('/api/auth/mfa/setup').then((r) => r.json());
+              enrollInfo.hidden = false;
+              mfaSecret.textContent = setup.secret;
+            }
+            mfaCode.focus();
+            return;
+          }
           if (res.ok) {
             location.href = '/admin';
             return;
@@ -182,6 +216,29 @@ if (loggedIn) {
           submitBtn.disabled = false;
         }
       });
+
+      mfaForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        mfaError.hidden = true;
+        const endpoint = nextStep === 'enroll' ? '/api/auth/mfa/confirm' : '/api/auth/mfa/verify';
+        const res = await fetch(endpoint, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: mfaCode.value }),
+        }).catch(() => null);
+        if (!res?.ok) {
+          mfaError.textContent = 'VERIFY FAILED / 动态码或恢复码无效';
+          mfaError.hidden = false;
+          mfaCode.select();
+          return;
+        }
+        const body = await res.json();
+        if (Array.isArray(body.recovery_codes)) {
+          mfaForm.hidden = true;
+          recoveryBox.hidden = false;
+          recoveryCodes.textContent = body.recovery_codes.join('\n');
+        } else location.href = '/admin';
+      });
+      document.getElementById('continueBtn')?.addEventListener('click', () => { location.href = '/admin'; });
     </script>
   </body>
 </html>

@@ -7,7 +7,7 @@ import '@/styles/admin.css';
 interface Props {
   title: string;
   eyebrow?: string;
-  active: 'dashboard' | 'posts' | 'news' | 'terms' | 'friends' | 'settings' | 'uploads' | 'backup';
+  active: 'dashboard' | 'posts' | 'news' | 'terms' | 'friends' | 'settings' | 'uploads' | 'backup' | 'logs' | 'security';
 }
 
 const { title, eyebrow = 'ADMIN CONSOLE', active } = Astro.props;
@@ -24,6 +24,8 @@ const navItems = [
   { id: 'uploads', href: '/admin/uploads', label: '图片素材', index: '06' },
   { id: 'settings', href: '/admin/settings', label: '站点设置', index: '07' },
   { id: 'backup', href: '/admin/backup', label: '备份管理', index: '08' },
+  { id: 'logs', href: '/admin/logs', label: '日志中心', index: '09' },
+  { id: 'security', href: '/admin/security', label: '安全设置', index: '10' },
 ] as const;
 ---
 
@@ -35,15 +37,7 @@ const navItems = [
     <meta name="robots" content="noindex, nofollow" />
     <title>{title} · SaltedBlog Admin</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <script is:inline>
-      (function () {
-        var theme = localStorage.getItem('sb-theme');
-        if (theme !== 'light' && theme !== 'dark') {
-          theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-        document.documentElement.dataset.theme = theme;
-      })();
-    </script>
+    <script is:inline src="/admin-theme.js"></script>
   </head>
   <body>
     <div class="admin-shell">

@@ -1,0 +1,53 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="安全设置" eyebrow="ACCOUNT / SECURITY" active="security">
+  <div class="admin-panel">
+    <div class="admin-panel__head">修改管理员密码</div>
+    <div class="admin-panel__body">
+      <p class="security-hint">修改后会撤销除当前设备外的全部会话。新密码至少 12 个字符。</p>
+      <form id="passwordForm" class="form-grid">
+        <div class="form-field"><label class="label" for="currentPassword">当前密码</label><input class="input" id="currentPassword" type="password" autocomplete="current-password" required /></div>
+        <div class="form-field"><label class="label" for="totpCode">TOTP 动态码</label><input class="input" id="totpCode" inputmode="numeric" autocomplete="one-time-code" required /></div>
+        <div class="form-field"><label class="label" for="newPassword">新密码</label><input class="input" id="newPassword" type="password" minlength="12" maxlength="256" autocomplete="new-password" required /></div>
+        <div class="form-field"><label class="label" for="confirmPassword">确认新密码</label><input class="input" id="confirmPassword" type="password" minlength="12" autocomplete="new-password" required /></div>
+        <div class="form-actions form-field--full"><button class="btn btn--primary" type="submit">更新密码</button></div>
+      </form>
+    </div>
+  </div>
+  <div class="admin-panel">
+    <div class="admin-panel__head">MFA 恢复码</div>
+    <div class="admin-panel__body">
+      <p class="security-hint">重新生成将立即废弃所有旧恢复码，并要求再次验证密码与 TOTP。</p>
+      <button class="btn btn--danger" id="recoveryBtn" type="button">重新生成恢复码</button>
+      <pre class="recovery-output" id="recoveryOutput" hidden></pre>
+    </div>
+  </div>
+</AdminLayout>
+
+<style>
+  .security-hint{color:var(--text-3);font-size:13px;line-height:1.6}.recovery-output{margin-top:16px;padding:16px;border:1px solid var(--border);background:var(--surface-2);line-height:1.8;columns:2;user-select:all}
+</style>
+
+<script>
+  import { adminFetch, stepUp, toast } from '@/lib/admin-client';
+  const form=document.getElementById('passwordForm') as HTMLFormElement;
+  form.addEventListener('submit',async(event)=>{
+    event.preventDefault();
+    const current=(document.getElementById('currentPassword') as HTMLInputElement).value;
+    const code=(document.getElementById('totpCode') as HTMLInputElement).value;
+    const next=(document.getElementById('newPassword') as HTMLInputElement).value;
+    const confirm=(document.getElementById('confirmPassword') as HTMLInputElement).value;
+    if(next!==confirm){toast('两次输入的新密码不一致','error');return}
+    try{
+      await adminFetch('/api/auth/step-up',{method:'POST',body:JSON.stringify({password:current,code})});
+      await adminFetch('/api/auth/password',{method:'POST',body:JSON.stringify({current_password:current,new_password:next})});
+      form.reset();toast('密码已更新，其他会话已撤销');
+    }catch(err){toast(`更新失败：${(err as Error).message}`,'error')}
+  });
+  document.getElementById('recoveryBtn')!.addEventListener('click',async()=>{
+    try{await stepUp();const result=await adminFetch<{recovery_codes:string[]}>('/api/auth/mfa/recovery-codes',{method:'POST'});const out=document.getElementById('recoveryOutput')!;out.textContent=result.recovery_codes.join('\n');out.hidden=false;toast('新恢复码已生成，请立即离线保存')}
+    catch(err){toast(`生成失败：${(err as Error).message}`,'error')}
+  });
+</script>
