@@ -8,7 +8,7 @@ interface Props {
 }
 
 const { lang } = Astro.props;
-const { items } = await getArchive(lang);
+const { items } = await getArchive();
 
 const groups = new Map<string, typeof items>();
 for (const item of items) {

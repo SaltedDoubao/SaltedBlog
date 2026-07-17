@@ -10,8 +10,8 @@ interface Props {
 const { lang } = Astro.props;
 
 const [postsRes, taxonomy, settings, friendsRes, digest] = await Promise.all([
-  getPosts({ lang, page: 1, pageSize: 3 }),
-  getTaxonomy(lang),
+  getPosts({ page: 1, pageSize: 3 }),
+  getTaxonomy(),
   getSettingsCached(),
   getFriends(),
   getLatestDigest(),
@@ -24,6 +24,9 @@ const ui = {
     newsDescription: '由 AI 情报管线每日聚合的前沿信号，点击进入完整日报。',
     digestEmpty: '情报信号待接入 / 管线尚未生成日报',
     digestOpen: '阅读完整日报',
+    carouselLabel: '重要情报轮播',
+    carouselPrev: '上一组情报',
+    carouselNext: '下一组情报',
     worldTitle: '内容疆域',
     worldDescription: '沿分类、系列与时间坐标进入博客的不同区域。',
     systemTitle: '内容部署系统',
@@ -81,6 +84,9 @@ const ui = {
     newsDescription: 'Frontier signals aggregated daily by the AI intel pipeline. Open the full digest.',
     digestEmpty: 'AWAITING INTEL SIGNAL / NO DIGEST GENERATED YET',
     digestOpen: 'Read Full Digest',
+    carouselLabel: 'Important intelligence carousel',
+    carouselPrev: 'Previous intelligence',
+    carouselNext: 'Next intelligence',
     worldTitle: 'Content Frontier',
     worldDescription: 'Enter the archive through categories, series, and chronological coordinates.',
     systemTitle: 'Content Deployment System',
@@ -152,21 +158,25 @@ const newsDescription = configured('home_news_description', ui.newsDescription);
 
 // ---- AI 日报数据（最新情报区 + 滚动字幕） ----
 const digestHref = digest ? localePath(lang, `/posts/${digest.slug}`) : '';
-const digestTitle = digest ? (lang === 'en' ? digest.title_en : digest.title_zh) : '';
-const digestSummary = digest ? (lang === 'en' ? digest.summary_en : digest.summary_zh) : '';
-// items 已按 importance 降序：前 2 条上卡片，前 5 条进字幕
-const digestTopItems = (digest?.items ?? []).slice(0, 2).map((item) => ({
-  title: lang === 'en' ? item.title_en : item.title_zh,
-  summary: lang === 'en' ? item.summary_en : item.summary_zh,
+const digestTitle = digest?.title ?? '';
+const digestSummary = digest?.summary ?? '';
+// items 已按 importance 降序；小卡片每两条组成一页同步轮播。
+const digestItems = (digest?.items ?? []).map((item, index) => ({
+  title: item.title,
+  summary: item.summary,
   source: item.source,
   stars: '★'.repeat(Math.min(Math.max(item.importance, 1), 5)),
   href: `${digestHref}#${item.anchor}`,
+  art: (index % 2) + 2,
 }));
+const digestSlides = Array.from({ length: Math.ceil(digestItems.length / 2) }, (_, index) =>
+  digestItems.slice(index * 2, index * 2 + 2)
+);
 const tickerHeadlines = (digest?.items ?? [])
   .slice(0, 5)
   .map(
     (item, index) =>
-      `INTEL ${String(index + 1).padStart(2, '0')} / ${lang === 'en' ? item.title_en : item.title_zh}`
+      `INTEL ${String(index + 1).padStart(2, '0')} / ${item.title}`
   );
 const worldTitle = configured('home_world_title', ui.worldTitle);
 const worldDescription = configured('home_world_description', ui.worldDescription);
@@ -307,21 +317,59 @@ const portals = [
                   <a class="news-card__arrow" href={digestHref} aria-label={ui.digestOpen}>↗</a>
                 </div>
               </article>
-              {digestTopItems.map((item, index) => (
-                <article class="news-card interactive" data-reveal={index === 1 ? 'right' : ''}>
-                  <a class="news-card__visual" href={item.href} aria-label={item.title}>
-                    <span class={`news-card__art news-card__art--${index + 2}`} />
-                  </a>
-                  <div class="news-card__body">
-                    <div class="news-card__tag mono">
-                      {item.stars} {item.source && <span>/ {item.source}</span>}
+              <div
+                class="news-carousel"
+                data-news-carousel
+                data-page-count={digestSlides.length}
+                aria-label={ui.carouselLabel}
+                aria-roledescription="carousel"
+                data-reveal="right"
+              >
+                <div class="news-carousel__viewport" aria-live="off">
+                  {digestSlides.map((slide, pageIndex) => (
+                    <div
+                      class="news-carousel__slide"
+                      data-news-slide
+                      data-active={pageIndex === 0 ? 'true' : 'false'}
+                      hidden={pageIndex !== 0}
+                      aria-label={`${pageIndex + 1} / ${digestSlides.length}`}
+                    >
+                      {slide.map((item) => (
+                        <article class:list={['news-card', 'interactive', { 'news-card--wide': slide.length === 1 }]}>
+                          <a class="news-card__visual" href={item.href} aria-label={item.title}>
+                            <span class={`news-card__art news-card__art--${item.art}`} />
+                          </a>
+                          <div class="news-card__body">
+                            <div class="news-card__tag mono">
+                              {item.stars} {item.source && <span>/ {item.source}</span>}
+                            </div>
+                            <h3><a href={item.href}>{item.title}</a></h3>
+                            {item.summary && <p>{item.summary}</p>}
+                            <a class="news-card__arrow" href={item.href} aria-label={item.title}>↗</a>
+                          </div>
+                        </article>
+                      ))}
                     </div>
-                    <h3><a href={item.href}>{item.title}</a></h3>
-                    {item.summary && <p>{item.summary}</p>}
-                    <a class="news-card__arrow" href={item.href} aria-label={item.title}>↗</a>
+                  ))}
+                </div>
+                {digestSlides.length > 1 && (
+                  <div class="news-carousel__controls mono">
+                    <button type="button" data-news-prev aria-label={ui.carouselPrev}>←</button>
+                    <div class="news-carousel__dots">
+                      {digestSlides.map((_, index) => (
+                        <button
+                          type="button"
+                          data-news-dot={index}
+                          data-active={index === 0 ? 'true' : 'false'}
+                          aria-label={`${index + 1} / ${digestSlides.length}`}
+                          aria-current={index === 0 ? 'true' : undefined}
+                        />
+                      ))}
+                    </div>
+                    <button type="button" data-news-next aria-label={ui.carouselNext}>→</button>
                   </div>
-                </article>
-              ))}
+                )}
+              </div>
             </div>
           ) : (
             <div class="home-empty mono" data-reveal>{ui.digestEmpty}</div>
@@ -654,6 +702,18 @@ const portals = [
   :global(html[data-home-boot='skip']) .hero [data-reveal] { opacity: 1; transform: none; }
 
   .news-grid { display: grid; grid-template-columns: 1.35fr .825fr .825fr; gap: 20px; }
+  .news-carousel { grid-column: span 2; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+  .news-carousel__viewport { min-width: 0; }
+  .news-carousel__slide { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; animation: news-slide-in 320ms var(--ease) both; }
+  .news-carousel__slide[hidden] { display: none; }
+  .news-card--wide { grid-column: 1/-1; }
+  .news-carousel__controls { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .news-carousel__controls button { width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border-strong); background: var(--paper-surface); color: var(--ink); cursor: pointer; }
+  .news-carousel__controls button:hover,.news-carousel__controls button:focus-visible { background: var(--primary); color: var(--black); }
+  .news-carousel__dots { display: flex; align-items: center; gap: 8px; }
+  .news-carousel__dots button { width: 9px; height: 9px; min-width: 9px; border: 0; border-radius: 50%; background: var(--ink-soft); opacity: .42; }
+  .news-carousel__dots button[data-active='true'] { width: 24px; border-radius: 1px; background: var(--primary); opacity: 1; }
+  @keyframes news-slide-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
   .news-card { min-height: 420px; position: relative; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--paper-surface); transition: border-color 300ms,transform 350ms var(--ease),box-shadow 350ms var(--ease); }
   .news-card--feature { min-height: 490px; }
   .news-card:hover { transform: translateY(-6px); border-color: var(--border-strong); box-shadow: 8px 8px 0 var(--border-strong); }
@@ -786,6 +846,7 @@ const portals = [
   @media (max-width: 1100px) {
     .news-grid { grid-template-columns: 1fr 1fr; }
     .news-card--feature { grid-column: 1/-1; }
+    .news-carousel { grid-column: 1/-1; }
     .world-panel { grid-template-columns: 1.12fr .88fr; }
     .world-panel__copy { padding-left: 45px; }
     .operator-stage { grid-template-columns: 260px 1fr; }
@@ -804,6 +865,9 @@ const portals = [
     .home-heading p { grid-column: 2; }
     .news-grid { grid-template-columns: 1fr; }
     .news-card--feature { grid-column: auto; }
+    .news-carousel { grid-column: auto; }
+    .news-carousel__slide { grid-template-columns: 1fr; }
+    .news-card--wide { grid-column: auto; }
     .news-card,.news-card--feature { min-height: 430px; }
     .news-card__visual,.news-card--feature .news-card__visual { height: 260px; }
     .world { height: auto; }
@@ -915,6 +979,61 @@ const portals = [
       revealElements.forEach((element) => {
         if (!element.closest('.hero')) revealObserver.observe(element);
       });
+    }
+
+    const newsCarousel = home.querySelector<HTMLElement>('[data-news-carousel]');
+    if (newsCarousel) {
+      const slides = Array.from(newsCarousel.querySelectorAll<HTMLElement>('[data-news-slide]'));
+      const dots = Array.from(newsCarousel.querySelectorAll<HTMLButtonElement>('[data-news-dot]'));
+      let activeIndex = 0;
+      let paused = false;
+      let timer: number | null = null;
+
+      const showSlide = (next: number) => {
+        if (slides.length < 2) return;
+        activeIndex = (next + slides.length) % slides.length;
+        slides.forEach((slide, index) => {
+          const active = index === activeIndex;
+          slide.hidden = !active;
+          slide.dataset.active = String(active);
+          slide.inert = !active;
+        });
+        dots.forEach((dot, index) => {
+          const active = index === activeIndex;
+          dot.dataset.active = String(active);
+          if (active) dot.setAttribute('aria-current', 'true');
+          else dot.removeAttribute('aria-current');
+        });
+      };
+
+      const stopCarousel = () => {
+        if (timer !== null) window.clearInterval(timer);
+        timer = null;
+      };
+      const startCarousel = () => {
+        stopCarousel();
+        if (reduced || slides.length < 2) return;
+        timer = window.setInterval(() => {
+          if (!paused && !document.hidden) showSlide(activeIndex + 1);
+        }, 5000);
+      };
+      const manualMove = (next: number) => {
+        showSlide(next);
+        startCarousel();
+      };
+
+      newsCarousel.querySelector<HTMLButtonElement>('[data-news-prev]')?.addEventListener('click', () => manualMove(activeIndex - 1));
+      newsCarousel.querySelector<HTMLButtonElement>('[data-news-next]')?.addEventListener('click', () => manualMove(activeIndex + 1));
+      dots.forEach((dot, index) => dot.addEventListener('click', () => manualMove(index)));
+      newsCarousel.addEventListener('mouseenter', () => { paused = true; });
+      newsCarousel.addEventListener('mouseleave', () => { paused = false; });
+      newsCarousel.addEventListener('focusin', () => { paused = true; });
+      newsCarousel.addEventListener('focusout', (event) => {
+        if (!newsCarousel.contains(event.relatedTarget as Node | null)) paused = false;
+      });
+      showSlide(0);
+      startCarousel();
+      window.addEventListener('pagehide', stopCarousel, { once: true });
     }
 
     const heroSection = home.querySelector<HTMLElement>('.hero');

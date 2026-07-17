@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::entities::{post_tags, posts, tags};
 use crate::error::{ApiError, ApiResult};
 use crate::render::{prepare_post_content, render_markdown, sanitize_slug};
-use crate::routes::dto::{hydrate_posts, validate_lang};
+use crate::routes::dto::hydrate_posts;
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -34,7 +34,6 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Deserialize)]
 struct AdminListQuery {
-    lang: Option<String>,
     status: Option<String>,
     q: Option<String>,
     page: Option<u64>,
@@ -49,9 +48,6 @@ async fn list_posts(
     let page_size = q.page_size.unwrap_or(20).clamp(1, 100);
 
     let mut cond = Condition::all();
-    if let Some(lang) = q.lang.as_deref().filter(|s| !s.is_empty()) {
-        cond = cond.add(posts::Column::Lang.eq(lang));
-    }
     if let Some(status) = q.status.as_deref().filter(|s| !s.is_empty()) {
         cond = cond.add(posts::Column::Status.eq(status));
     }
@@ -93,24 +89,10 @@ async fn get_post(
         .map(|r| r.tag_id)
         .collect();
 
-    // 同组的其它语言版本（便于后台关联展示）
-    let siblings: Vec<serde_json::Value> = posts::Entity::find()
-        .filter(
-            Condition::all()
-                .add(posts::Column::GroupId.eq(post.group_id.clone()))
-                .add(posts::Column::Id.ne(post.id)),
-        )
-        .all(&state.db())
-        .await?
-        .iter()
-        .map(|p| json!({ "id": p.id, "lang": p.lang, "title": p.title, "status": p.status }))
-        .collect();
-
     let content_md = post.content_md.clone();
     let mut value = serde_json::to_value(&post).map_err(|e| ApiError::internal(e.to_string()))?;
     value["content_md"] = json!(content_md);
     value["tag_ids"] = json!(tag_ids);
-    value["siblings"] = json!(siblings);
     Ok(Json(value))
 }
 
@@ -118,7 +100,6 @@ async fn get_post(
 
 #[derive(Deserialize)]
 struct PostInput {
-    lang: String,
     slug: Option<String>,
     title: String,
     summary: Option<String>,
@@ -130,8 +111,6 @@ struct PostInput {
     series_order: Option<i32>,
     #[serde(default)]
     tag_ids: Vec<i32>,
-    /// 关联已有文章组（翻译版本）；为空则新建组
-    group_id: Option<String>,
 }
 
 struct PreparedPost {
@@ -142,9 +121,6 @@ struct PreparedPost {
 }
 
 async fn prepare(state: &AppState, input: &PostInput) -> ApiResult<PreparedPost> {
-    if !validate_lang(&input.lang) {
-        return Err(ApiError::bad_request("invalid lang"));
-    }
     if input.title.trim().is_empty() {
         return Err(ApiError::bad_request("title required"));
     }
@@ -192,15 +168,8 @@ async fn prepare(state: &AppState, input: &PostInput) -> ApiResult<PreparedPost>
     })
 }
 
-async fn slug_conflict(
-    state: &AppState,
-    lang: &str,
-    slug: &str,
-    exclude_id: Option<i32>,
-) -> ApiResult<bool> {
-    let mut cond = Condition::all()
-        .add(posts::Column::Lang.eq(lang))
-        .add(posts::Column::Slug.eq(slug));
+async fn slug_conflict(state: &AppState, slug: &str, exclude_id: Option<i32>) -> ApiResult<bool> {
+    let mut cond = Condition::all().add(posts::Column::Slug.eq(slug));
     if let Some(id) = exclude_id {
         cond = cond.add(posts::Column::Id.ne(id));
     }
@@ -232,23 +201,14 @@ async fn create_post(
     Json(input): Json<PostInput>,
 ) -> ApiResult<impl IntoResponse> {
     let prepared = prepare(&state, &input).await?;
-    if slug_conflict(&state, &input.lang, &prepared.slug, None).await? {
+    if slug_conflict(&state, &prepared.slug, None).await? {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
-            format!(
-                "slug '{}' already exists for lang {}",
-                prepared.slug, input.lang
-            ),
+            format!("slug '{}' already exists", prepared.slug),
         ));
     }
 
     let now = Utc::now();
-    let group_id = input
-        .group_id
-        .clone()
-        .filter(|g| !g.is_empty())
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
-
     let published_at = if input.status == posts::STATUS_PUBLISHED {
         Some(now.into())
     } else {
@@ -256,8 +216,6 @@ async fn create_post(
     };
 
     let model = posts::ActiveModel {
-        group_id: Set(group_id),
-        lang: Set(input.lang.clone()),
         slug: Set(prepared.slug),
         title: Set(input.title.trim().to_string()),
         summary: Set(input.summary.clone().filter(|s| !s.is_empty())),
@@ -296,13 +254,10 @@ async fn update_post(
         .ok_or_else(ApiError::not_found)?;
 
     let prepared = prepare(&state, &input).await?;
-    if slug_conflict(&state, &input.lang, &prepared.slug, Some(id)).await? {
+    if slug_conflict(&state, &prepared.slug, Some(id)).await? {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
-            format!(
-                "slug '{}' already exists for lang {}",
-                prepared.slug, input.lang
-            ),
+            format!("slug '{}' already exists", prepared.slug),
         ));
     }
 
@@ -313,15 +268,7 @@ async fn update_post(
     } else {
         existing.published_at
     };
-    let group_id = input
-        .group_id
-        .clone()
-        .filter(|g| !g.is_empty())
-        .unwrap_or(existing.group_id.clone());
-
     let mut model: posts::ActiveModel = existing.into();
-    model.group_id = Set(group_id);
-    model.lang = Set(input.lang.clone());
     model.slug = Set(prepared.slug);
     model.title = Set(input.title.trim().to_string());
     model.summary = Set(input.summary.clone().filter(|s| !s.is_empty()));

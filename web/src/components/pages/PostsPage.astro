@@ -30,7 +30,6 @@ if (filter) {
 }
 
 const postsRes = await getPosts({
-  lang,
   page,
   pageSize,
   category: filter?.type === 'category' ? filter.slug : undefined,

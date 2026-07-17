@@ -21,7 +21,7 @@ export function siteUrl(): string {
 export async function buildRss(lang: Lang): Promise<Response> {
   const [settings, postsRes] = await Promise.all([
     getSettingsCached(),
-    getPosts({ lang, page: 1, pageSize: 20 }),
+    getPosts({ page: 1, pageSize: 20 }),
   ]);
   const base = siteUrl();
   const title = settings[`site_title_${lang}`] || 'SaltedBlog';

@@ -25,11 +25,10 @@ export const GET: APIRoute = async () => {
   }
 
   for (const post of data.posts) {
-    const prefix = post.lang === 'zh' ? '' : '/en';
-    urls.push({
-      loc: `${base}${prefix}/posts/${encodeURIComponent(post.slug)}`,
-      lastmod: post.updated_at ? new Date(post.updated_at).toISOString() : undefined,
-    });
+    const lastmod = post.updated_at ? new Date(post.updated_at).toISOString() : undefined;
+    const slug = encodeURIComponent(post.slug);
+    urls.push({ loc: `${base}/posts/${slug}`, lastmod });
+    urls.push({ loc: `${base}/en/posts/${slug}`, lastmod });
   }
   for (const slug of data.categories) {
     urls.push({ loc: `${base}/categories/${slug}` });

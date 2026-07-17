@@ -3,7 +3,7 @@ import PostsPage from '@/components/pages/PostsPage.astro';
 import { findTerm } from '@/lib/api';
 
 const slug = Astro.params.slug!;
-const term = await findTerm('en', 'tag', slug);
+const term = await findTerm('tag', slug);
 if (!term) {
   return Astro.rewrite('/404');
 }

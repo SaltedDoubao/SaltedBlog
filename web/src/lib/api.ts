@@ -33,8 +33,6 @@ export interface SeriesOut {
 
 export interface PostListItem {
   id: number;
-  group_id: string;
-  lang: string;
   slug: string;
   title: string;
   summary: string | null;
@@ -66,7 +64,6 @@ export interface PostDetailResponse {
   post: PostListItem;
   content_html: string;
   toc: TocItem[];
-  translations: { lang: string; slug: string; title: string }[];
   series_posts: {
     id: number;
     slug: string;
@@ -103,7 +100,7 @@ export interface FriendItem {
 export type SettingsMap = Record<string, string>;
 
 export interface SitemapData {
-  posts: { lang: string; slug: string; updated_at: string; published_at: string | null }[];
+  posts: { slug: string; updated_at: string; published_at: string | null }[];
   categories: string[];
   tags: string[];
   series: string[];
@@ -141,14 +138,13 @@ export function isNotFound(err: unknown): boolean {
 // ---- 公开接口 ----
 
 export function getPosts(params: {
-  lang: string;
   page?: number;
   pageSize?: number;
   category?: string;
   tag?: string;
   series?: string;
 }): Promise<PostListResponse> {
-  const q = new URLSearchParams({ lang: params.lang });
+  const q = new URLSearchParams();
   if (params.page) q.set('page', String(params.page));
   if (params.pageSize) q.set('page_size', String(params.pageSize));
   if (params.category) q.set('category', params.category);
@@ -157,20 +153,20 @@ export function getPosts(params: {
   return apiFetch(`/api/posts?${q}`);
 }
 
-export function getPostDetail(lang: string, slug: string): Promise<PostDetailResponse> {
-  return apiFetch(`/api/posts/${lang}/${encodeURIComponent(slug)}`);
+export function getPostDetail(slug: string): Promise<PostDetailResponse> {
+  return apiFetch(`/api/posts/${encodeURIComponent(slug)}`);
 }
 
-export function getArchive(lang: string): Promise<{ items: ArchiveItem[] }> {
-  return apiFetch(`/api/archive?lang=${lang}`);
+export function getArchive(): Promise<{ items: ArchiveItem[] }> {
+  return apiFetch('/api/archive');
 }
 
-export function getTaxonomy(lang: string): Promise<TaxonomyResponse> {
-  return apiFetch(`/api/taxonomy?lang=${lang}`);
+export function getTaxonomy(): Promise<TaxonomyResponse> {
+  return apiFetch('/api/taxonomy');
 }
 
-export function searchPosts(lang: string, q: string): Promise<{ items: PostListItem[]; q: string }> {
-  return apiFetch(`/api/search?lang=${lang}&q=${encodeURIComponent(q)}`);
+export function searchPosts(q: string): Promise<{ items: PostListItem[]; q: string }> {
+  return apiFetch(`/api/search?q=${encodeURIComponent(q)}`);
 }
 
 export function getFriends(): Promise<{ items: FriendItem[] }> {
@@ -204,12 +200,9 @@ export function getAbout(lang: string): Promise<{ html: string; toc: TocItem[] }
 // ---- AI 日报 ----
 
 export interface DigestItemOut {
-  title_zh: string;
-  title_en: string;
-  summary_zh: string;
-  summary_en: string;
-  why_zh: string;
-  why_en: string;
+  title: string;
+  summary: string;
+  why: string;
   source: string;
   url: string | null;
   importance: number;
@@ -220,10 +213,8 @@ export interface DigestItemOut {
 export interface LatestDigest {
   date: string;
   slug: string;
-  title_zh: string;
-  title_en: string;
-  summary_zh: string;
-  summary_en: string;
+  title: string;
+  summary: string;
   item_count: number;
   generated_at: string | null;
   items: DigestItemOut[];
@@ -245,11 +236,10 @@ export function getSitemapData(): Promise<SitemapData> {
 
 /** 按 slug 查找分类/标签/系列（供过滤页做 404 判断），未找到返回 null */
 export async function findTerm(
-  lang: string,
   kind: 'category' | 'tag' | 'series',
   slug: string
 ): Promise<CategoryOut | TagOut | SeriesOut | null> {
-  const taxonomy = await getTaxonomy(lang);
+  const taxonomy = await getTaxonomy();
   const pool =
     kind === 'category' ? taxonomy.categories : kind === 'tag' ? taxonomy.tags : taxonomy.series;
   return pool.find((item) => item.slug === slug) ?? null;
@@ -257,11 +247,10 @@ export async function findTerm(
 
 /** 获取文章详情；404 时返回 null（供页面 frontmatter 做 rewrite 判断） */
 export async function getPostDetailOrNull(
-  lang: string,
   slug: string
 ): Promise<PostDetailResponse | null> {
   try {
-    return await getPostDetail(lang, slug);
+    return await getPostDetail(slug);
   } catch (err) {
     if (isNotFound(err)) return null;
     throw err;

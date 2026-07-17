@@ -1,4 +1,4 @@
-//! AI 情报聚合管线：信源采集 → 去重过滤 → 选稿 → LLM 双语日报 → 发布为博客文章
+//! AI 情报聚合管线：信源采集 → 去重过滤 → 选稿 → LLM 中文日报 → 发布为博客文章
 pub mod digest;
 pub mod fetch;
 pub mod fetcher;

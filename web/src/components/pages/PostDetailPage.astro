@@ -12,17 +12,13 @@ interface Props {
 
 const { lang, detail } = Astro.props;
 const settings = await getSettingsCached();
-const { post, content_html, toc, translations, series_posts, prev, next } = detail;
+const { post, content_html, toc, series_posts, prev, next } = detail;
 
 const date = formatDate(lang, post.published_at);
 const updated = formatDate(lang, post.updated_at);
 const categoryName = localName(lang, post.category);
 const seriesName = localName(lang, post.series);
-const translation = translations.find((tr) => tr.lang === otherLang(lang));
-// 无对应翻译时，语言切换回退到另一语言的首页而不是 404
-const altPath = translation
-  ? localePath(otherLang(lang), `/posts/${translation.slug}`)
-  : localePath(otherLang(lang), '/');
+const altPath = localePath(otherLang(lang), `/posts/${post.slug}`);
 const showToc = toc.length > 1;
 ---
 
@@ -33,7 +29,7 @@ const showToc = toc.length > 1;
   ogImage={post.cover}
   ogType="article"
   altPath={altPath}
-  hasAlt={Boolean(translation)}
+  hasAlt={true}
   trackPostId={post.id}
 >
   <article class="post">
@@ -53,13 +49,6 @@ const showToc = toc.length > 1;
         <div class="post-header__meta mono rise-in">
           <span>{post.view_count} {t(lang, 'post.views')}</span>
           {updated && <span>{t(lang, 'post.updated')} {updated}</span>}
-          {
-            translation && altPath && (
-              <a class="post-header__translation" href={altPath}>
-                {t(lang, 'post.translation')} ↗
-              </a>
-            )
-          }
         </div>
       </div>
     </header>
@@ -213,15 +202,6 @@ const showToc = toc.length > 1;
     margin-top: var(--space-5);
     font-size: 10px;
     color: var(--text-3);
-  }
-
-  .post-header__translation {
-    color: var(--accent-text);
-    text-decoration: none;
-  }
-
-  .post-header__translation:hover {
-    text-decoration: underline;
   }
 
   .post-layout {

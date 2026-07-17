@@ -52,7 +52,6 @@ struct TaskInput {
     interval_hours: Option<i32>,
     generation_time: Option<String>,
     publish_time: Option<String>,
-    title_en: Option<String>,
     publish_mode: Option<String>,
 }
 
@@ -64,7 +63,6 @@ struct ValidatedTask {
     interval_hours: Option<i32>,
     generation_time: Option<String>,
     publish_time: Option<String>,
-    title_en: Option<String>,
     publish_mode: Option<String>,
 }
 
@@ -80,7 +78,7 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
         }
         Ok(value.to_string())
     };
-    let (start_time, interval_hours, generation_time, publish_time, title_en, publish_mode) =
+    let (start_time, interval_hours, generation_time, publish_time, publish_mode) =
         match input.task_type.as_str() {
             news_tasks::TYPE_FETCH => {
                 if input
@@ -89,10 +87,6 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
                     .is_some_and(|value| !value.is_empty())
                     || input
                         .publish_time
-                        .as_deref()
-                        .is_some_and(|value| !value.is_empty())
-                    || input
-                        .title_en
                         .as_deref()
                         .is_some_and(|value| !value.is_empty())
                     || input
@@ -112,7 +106,6 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
                     None,
                     None,
                     None,
-                    None,
                 )
             }
             news_tasks::TYPE_DIGEST => {
@@ -125,10 +118,6 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
                     return Err(ApiError::bad_request("整理发布任务不能包含采集配置"));
                 }
                 let generation = valid_time(&input.generation_time, "生成时间")?;
-                let title_en = input.title_en.as_deref().unwrap_or("").trim().to_string();
-                if title_en.is_empty() || title_en.chars().count() > 300 {
-                    return Err(ApiError::bad_request("英文日报标题长度应为 1-300 个字符"));
-                }
                 let mode = input.publish_mode.as_deref().unwrap_or("");
                 let publish = match mode {
                     news_tasks::PUBLISH_MODE_DRAFT => {
@@ -155,7 +144,6 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
                     None,
                     Some(generation),
                     publish,
-                    Some(title_en),
                     Some(mode.to_string()),
                 )
             }
@@ -169,7 +157,6 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
         interval_hours,
         generation_time,
         publish_time,
-        title_en,
         publish_mode,
     })
 }
@@ -196,7 +183,6 @@ async fn create_task(
         interval_hours: Set(task.interval_hours),
         generation_time: Set(task.generation_time),
         publish_time: Set(task.publish_time),
-        title_en: Set(task.title_en),
         publish_mode: Set(task.publish_mode),
         last_scheduled_at: Set(None),
         created_at: Set(now.into()),
@@ -231,7 +217,6 @@ async fn update_task(
     model.interval_hours = Set(task.interval_hours);
     model.generation_time = Set(task.generation_time);
     model.publish_time = Set(task.publish_time);
-    model.title_en = Set(task.title_en);
     model.publish_mode = Set(task.publish_mode);
     if schedule_changed {
         model.last_scheduled_at = Set(None);
@@ -692,8 +677,7 @@ async fn list_jobs(
                 "selected_count": job.selected_count,
                 "error_message": job.error_message,
                 "llm_model": job.llm_model,
-                "post_id_zh": job.post_id_zh,
-                "post_id_en": job.post_id_en,
+                "post_id": job.post_id,
                 "started_at": job.started_at,
                 "finished_at": job.finished_at,
                 "news_task_id": job.news_task_id,
@@ -730,7 +714,6 @@ mod tests {
             interval_hours: Some(2),
             generation_time: None,
             publish_time: None,
-            title_en: None,
             publish_mode: None,
         };
         let task = validate_task(&input).unwrap();
@@ -748,7 +731,6 @@ mod tests {
             interval_hours: None,
             generation_time: Some("20:00".into()),
             publish_time: Some("08:00".into()),
-            title_en: Some("AI Daily".into()),
             publish_mode: Some(news_tasks::PUBLISH_MODE_SCHEDULED.into()),
         };
         assert!(validate_task(&input).is_err());
@@ -764,11 +746,9 @@ mod tests {
             interval_hours: None,
             generation_time: Some("08:00".into()),
             publish_time: None,
-            title_en: Some("AI Daily".into()),
             publish_mode: Some(news_tasks::PUBLISH_MODE_DRAFT.into()),
         };
         let task = validate_task(&input).unwrap();
-        assert_eq!(task.title_en.as_deref(), Some("AI Daily"));
         assert!(task.publish_time.is_none());
     }
 }

@@ -9,11 +9,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     <div class="admin-panel__head">
       <span>FILTER</span>
       <div class="filters">
-        <select class="select select--sm" id="filterLang">
-          <option value="">全部语言</option>
-          <option value="zh">中文</option>
-          <option value="en">English</option>
-        </select>
         <select class="select select--sm" id="filterStatus">
           <option value="">全部状态</option>
           <option value="published">已发布</option>
@@ -27,7 +22,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
         <tr>
           <th style="width:48px">ID</th>
           <th>标题</th>
-          <th style="width:70px">语言</th>
           <th style="width:86px">状态</th>
           <th style="width:130px">分类</th>
           <th style="width:80px">阅读</th>
@@ -36,7 +30,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
         </tr>
       </thead>
       <tbody id="postsBody">
-        <tr><td colspan="8" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
+        <tr><td colspan="7" style="text-align:center;color:var(--text-3)">加载中…</td></tr>
       </tbody>
     </table>
     <div class="admin-panel__body list-pager">
@@ -80,7 +74,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
 
   interface AdminPost {
     id: number;
-    lang: string;
     slug: string;
     title: string;
     status: string;
@@ -96,7 +89,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     page_size: number;
   }
 
-  const state = { page: 1, lang: '', status: '', q: '' };
+  const state = { page: 1, status: '', q: '' };
   const pageSize = 20;
   let totalPages = 1;
 
@@ -105,7 +98,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
 
   async function load() {
     const params = new URLSearchParams({ page: String(state.page), page_size: String(pageSize) });
-    if (state.lang) params.set('lang', state.lang);
     if (state.status) params.set('status', state.status);
     if (state.q) params.set('q', state.q);
 
@@ -122,18 +114,17 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
 
     if (res.items.length === 0) {
       body.innerHTML =
-        '<tr><td colspan="8" style="text-align:center;color:var(--text-3)">暂无文章</td></tr>';
+        '<tr><td colspan="7" style="text-align:center;color:var(--text-3)">暂无文章</td></tr>';
       return;
     }
 
     body.innerHTML = res.items
       .map((post) => {
-        const viewHref = post.lang === 'zh' ? `/posts/${post.slug}` : `/en/posts/${post.slug}`;
+        const viewHref = `/posts/${post.slug}`;
         return `
           <tr>
             <td class="mono">${post.id}</td>
             <td><a href="/admin/posts/edit?id=${post.id}" style="color:inherit;font-weight:600;text-decoration:none">${escapeHtml(post.title)}</a></td>
-            <td><span class="badge badge--${post.lang}">${post.lang.toUpperCase()}</span></td>
             <td><span class="badge badge--${post.status}">${post.status === 'published' ? '已发布' : '草稿'}</span></td>
             <td>${post.category ? escapeHtml(post.category.name_zh) : '<span style="color:var(--text-3)">—</span>'}</td>
             <td class="mono">${post.view_count}</td>
@@ -163,11 +154,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     });
   }
 
-  document.getElementById('filterLang')!.addEventListener('change', (e) => {
-    state.lang = (e.target as HTMLSelectElement).value;
-    state.page = 1;
-    load();
-  });
   document.getElementById('filterStatus')!.addEventListener('change', (e) => {
     state.status = (e.target as HTMLSelectElement).value;
     state.page = 1;

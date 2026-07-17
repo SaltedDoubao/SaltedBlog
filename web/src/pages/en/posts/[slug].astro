@@ -2,7 +2,7 @@
 import PostDetailPage from '@/components/pages/PostDetailPage.astro';
 import { getPostDetailOrNull } from '@/lib/api';
 
-const detail = await getPostDetailOrNull('en', Astro.params.slug!);
+const detail = await getPostDetailOrNull(Astro.params.slug!);
 if (!detail) {
   return Astro.rewrite('/404');
 }

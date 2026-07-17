@@ -9,7 +9,7 @@ interface Props {
 
 const { lang } = Astro.props;
 const q = (Astro.url.searchParams.get('q') ?? '').trim();
-const result = q ? await searchPosts(lang, q) : null;
+const result = q ? await searchPosts(q) : null;
 ---
 
 <BaseLayout lang={lang} title={t(lang, 'search.title')}>

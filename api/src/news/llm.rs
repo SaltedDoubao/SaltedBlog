@@ -1,20 +1,16 @@
-//! LLM 客户端（OpenAI 兼容 /chat/completions）与双语出版契约解析
+//! LLM 客户端（OpenAI 兼容 /chat/completions）与中文日报出版契约解析
 use serde::{Deserialize, Serialize};
 
-// ---------- 出版契约（单次调用产出中英双语字段） ----------
+// ---------- 出版契约（单次调用产出中文日报） ----------
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DigestDoc {
     #[serde(default)]
     pub date: String,
     #[serde(default)]
-    pub title_zh: String,
+    pub title: String,
     #[serde(default)]
-    pub title_en: String,
-    #[serde(default)]
-    pub summary_zh: String,
-    #[serde(default)]
-    pub summary_en: String,
+    pub summary: String,
     #[serde(default)]
     pub sections: Vec<DigestSection>,
 }
@@ -22,9 +18,7 @@ pub struct DigestDoc {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DigestSection {
     #[serde(default)]
-    pub name_zh: String,
-    #[serde(default)]
-    pub name_en: String,
+    pub name: String,
     #[serde(default)]
     pub items: Vec<DigestItem>,
 }
@@ -32,17 +26,11 @@ pub struct DigestSection {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DigestItem {
     #[serde(default)]
-    pub title_zh: String,
+    pub title: String,
     #[serde(default)]
-    pub title_en: String,
+    pub summary: String,
     #[serde(default)]
-    pub summary_zh: String,
-    #[serde(default)]
-    pub summary_en: String,
-    #[serde(default)]
-    pub why_zh: String,
-    #[serde(default)]
-    pub why_en: String,
+    pub why: String,
     #[serde(default)]
     pub source: String,
     #[serde(default)]
@@ -64,9 +52,7 @@ impl DigestDoc {
     /// 清洗：丢弃无标题条目与空分节，钳制 importance，按顺序填充锚点
     pub fn sanitize(&mut self) {
         for section in &mut self.sections {
-            section.items.retain(|item| {
-                !item.title_zh.trim().is_empty() || !item.title_en.trim().is_empty()
-            });
+            section.items.retain(|item| !item.title.trim().is_empty());
         }
         self.sections.retain(|s| !s.items.is_empty());
         let mut counter = 0;
@@ -75,12 +61,6 @@ impl DigestDoc {
                 counter += 1;
                 item.importance = item.importance.clamp(1, 5);
                 item.anchor = format!("intel-{counter}");
-                if item.title_zh.trim().is_empty() {
-                    item.title_zh = item.title_en.clone();
-                }
-                if item.title_en.trim().is_empty() {
-                    item.title_en = item.title_zh.clone();
-                }
                 if item.tags.len() > 5 {
                     item.tags.truncate(5);
                 }
@@ -216,14 +196,13 @@ mod tests {
     fn parse_doc_sanitizes() {
         let raw = r#"{
             "date": "2026-07-16",
-            "title_zh": "AI 前沿日报", "title_en": "AI Daily",
-            "summary_zh": "综述", "summary_en": "Overview",
+            "title": "AI 前沿日报", "summary": "综述",
             "sections": [
-                {"name_zh": "模型", "name_en": "Models", "items": [
-                    {"title_zh": "条目一", "title_en": "Item One", "importance": 9, "tags": ["a","b","c","d","e","f"]},
-                    {"title_zh": "", "title_en": ""}
+                {"name": "模型", "items": [
+                    {"title": "条目一", "importance": 9, "tags": ["a","b","c","d","e","f"]},
+                    {"title": ""}
                 ]},
-                {"name_zh": "空", "name_en": "Empty", "items": []}
+                {"name": "空", "items": []}
             ]
         }"#;
         let doc = parse_digest_doc(raw).unwrap();
@@ -236,10 +215,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_doc_fills_missing_lang_title() {
-        let raw = r#"{"sections": [{"items": [{"title_en": "Only EN"}]}]}"#;
-        let doc = parse_digest_doc(raw).unwrap();
-        assert_eq!(doc.sections[0].items[0].title_zh, "Only EN");
+    fn parse_doc_rejects_missing_title() {
+        let raw = r#"{"sections": [{"items": [{"summary": "无标题"}]}]}"#;
+        assert!(parse_digest_doc(raw).is_none());
     }
 
     #[test]
@@ -251,14 +229,14 @@ mod tests {
     #[test]
     fn importance_ordering() {
         let raw = r#"{"sections": [{"items": [
-            {"title_zh": "低", "importance": 1},
-            {"title_zh": "高", "importance": 5},
-            {"title_zh": "中", "importance": 3}
+            {"title": "低", "importance": 1},
+            {"title": "高", "importance": 5},
+            {"title": "中", "importance": 3}
         ]}]}"#;
         let doc = parse_digest_doc(raw).unwrap();
         let ordered = doc.items_by_importance();
-        assert_eq!(ordered[0].title_zh, "高");
-        assert_eq!(ordered[1].title_zh, "中");
-        assert_eq!(ordered[2].title_zh, "低");
+        assert_eq!(ordered[0].title, "高");
+        assert_eq!(ordered[1].title, "中");
+        assert_eq!(ordered[2].title, "低");
     }
 }

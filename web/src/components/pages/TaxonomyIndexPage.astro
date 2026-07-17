@@ -9,7 +9,7 @@ interface Props {
 }
 
 const { lang, kind } = Astro.props;
-const taxonomy = await getTaxonomy(lang);
+const taxonomy = await getTaxonomy();
 
 const items =
   kind === 'tags' ? taxonomy.tags : kind === 'categories' ? taxonomy.categories : taxonomy.series;

@@ -3,8 +3,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
 import '@/styles/prose.css';
 
 const editId = Astro.url.searchParams.get('id');
-const presetGroup = Astro.url.searchParams.get('group') ?? '';
-const presetLang = Astro.url.searchParams.get('lang') ?? 'zh';
 ---
 
 <AdminLayout
@@ -21,27 +19,17 @@ const presetLang = Astro.url.searchParams.get('lang') ?? 'zh';
   <div
     id="editorRoot"
     data-edit-id={editId ?? ''}
-    data-preset-group={presetGroup}
-    data-preset-lang={presetLang}
   >
     <!-- 元信息 -->
     <div class="admin-panel">
       <div class="admin-panel__head">
         <span>META / 文章信息</span>
-        <span class="mono" id="siblingInfo"></span>
       </div>
       <div class="admin-panel__body">
         <div class="form-grid">
           <div class="form-field form-field--full">
             <label class="label" for="fTitle">标题 TITLE</label>
             <input class="input" id="fTitle" placeholder="文章标题" />
-          </div>
-          <div class="form-field">
-            <label class="label" for="fLang">语言 LANG</label>
-            <select class="select" id="fLang">
-              <option value="zh">中文 (zh)</option>
-              <option value="en">English (en)</option>
-            </select>
           </div>
           <div class="form-field">
             <label class="label" for="fSlug">SLUG（留空自动生成）</label>
@@ -215,11 +203,9 @@ const presetLang = Astro.url.searchParams.get('lang') ?? 'zh';
 
   const root = document.getElementById('editorRoot')!;
   let editId: number | null = root.dataset.editId ? Number(root.dataset.editId) : null;
-  let groupId = root.dataset.presetGroup || '';
 
   // ---- 表单元素 ----
   const fTitle = document.getElementById('fTitle') as HTMLInputElement;
-  const fLang = document.getElementById('fLang') as HTMLSelectElement;
   const fSlug = document.getElementById('fSlug') as HTMLInputElement;
   const fSummary = document.getElementById('fSummary') as HTMLTextAreaElement;
   const fCover = document.getElementById('fCover') as HTMLInputElement;
@@ -227,10 +213,7 @@ const presetLang = Astro.url.searchParams.get('lang') ?? 'zh';
   const fSeries = document.getElementById('fSeries') as HTMLSelectElement;
   const fSeriesOrder = document.getElementById('fSeriesOrder') as HTMLInputElement;
   const tagsBox = document.getElementById('tagsBox')!;
-  const siblingInfo = document.getElementById('siblingInfo')!;
   const hiddenFile = document.getElementById('hiddenFile') as HTMLInputElement;
-
-  fLang.value = root.dataset.presetLang || 'zh';
 
   // ---- CodeMirror ----
   const cmTheme = EditorView.theme({
@@ -429,8 +412,6 @@ const presetLang = Astro.url.searchParams.get('lang') ?? 'zh';
   // ---- 加载已有文章 ----
   interface AdminPostDetail {
     id: number;
-    group_id: string;
-    lang: string;
     slug: string;
     title: string;
     summary: string | null;
@@ -441,22 +422,16 @@ const presetLang = Astro.url.searchParams.get('lang') ?? 'zh';
     series_id: number | null;
     series_order: number | null;
     tag_ids: number[];
-    siblings: { id: number; lang: string; title: string; status: string }[];
   }
 
   let currentStatus = 'draft';
 
   async function loadPost() {
-    if (!editId) {
-      renderSiblings([]);
-      return;
-    }
+    if (!editId) return;
     try {
       const post = await adminFetch<AdminPostDetail>(`/api/admin/posts/${editId}`);
-      groupId = post.group_id;
       currentStatus = post.status;
       fTitle.value = post.title;
-      fLang.value = post.lang;
       fSlug.value = post.slug;
       fSummary.value = post.summary ?? '';
       fCover.value = post.cover ?? '';
@@ -469,27 +444,8 @@ const presetLang = Astro.url.searchParams.get('lang') ?? 'zh';
       }
       setDoc(post.content_md);
       schedulePreview();
-      renderSiblings(post.siblings);
     } catch (err) {
       toast(`文章加载失败：${(err as Error).message}`, 'error');
-    }
-  }
-
-  function renderSiblings(siblings: AdminPostDetail['siblings']) {
-    if (!editId) {
-      siblingInfo.textContent = '';
-      return;
-    }
-    if (siblings.length > 0) {
-      siblingInfo.innerHTML = siblings
-        .map(
-          (s) =>
-            `<a href="/admin/posts/edit?id=${s.id}" style="color:var(--accent-text)">${s.lang.toUpperCase()} 版本 →</a>`
-        )
-        .join(' ');
-    } else {
-      const target = fLang.value === 'zh' ? 'en' : 'zh';
-      siblingInfo.innerHTML = `<a href="/admin/posts/edit?group=${groupId}&lang=${target}" style="color:var(--accent-text)">+ 创建 ${target.toUpperCase()} 翻译版本</a>`;
     }
   }
 
@@ -501,7 +457,6 @@ const presetLang = Astro.url.searchParams.get('lang') ?? 'zh';
       return;
     }
     const payload = {
-      lang: fLang.value,
       slug: fSlug.value.trim() || null,
       title,
       summary: fSummary.value.trim() || null,
@@ -512,7 +467,6 @@ const presetLang = Astro.url.searchParams.get('lang') ?? 'zh';
       series_id: fSeries.value ? Number(fSeries.value) : null,
       series_order: fSeriesOrder.value ? Number(fSeriesOrder.value) : null,
       tag_ids: selectedTagIds(),
-      group_id: groupId || null,
     };
     try {
       if (editId) {

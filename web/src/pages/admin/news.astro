@@ -80,10 +80,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
       </div>
       <div class="task-template form-grid" data-task-template="digest" hidden>
         <div class="form-field">
-          <label class="label">英文日报标题 *</label>
-          <input class="input" data-task-field="title_en" maxlength="300" placeholder="AI Morning Brief" />
-        </div>
-        <div class="form-field">
           <label class="label">生成时间（HH:MM，站点时区）</label>
           <input class="input" data-task-field="generation_time" type="time" step="60" value="08:00" />
         </div>
@@ -417,8 +413,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     selected_count: number;
     error_message: string | null;
     llm_model: string | null;
-    post_id_zh: number | null;
-    post_id_en: number | null;
+    post_id: number | null;
     started_at: string;
     finished_at: string | null;
     news_task_id: number | null;
@@ -437,7 +432,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     interval_hours: number | null;
     generation_time: string | null;
     publish_time: string | null;
-    title_en: string | null;
     publish_mode: 'draft' | 'scheduled' | null;
     last_scheduled_at: string | null;
   }
@@ -579,7 +573,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     taskField('interval_hours').value = String(row?.interval_hours ?? 2);
     taskField('generation_time').value = row?.generation_time ?? '08:00';
     taskField('publish_time').value = row?.publish_time ?? '09:00';
-    taskField('title_en').value = row?.title_en ?? 'AI Frontier Daily';
     taskField('publish_mode').value = row?.publish_mode ?? 'scheduled';
     syncTaskFields();
     taskForm.hidden = false;
@@ -599,7 +592,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
         taskType === 'digest' && taskField('publish_mode').value === 'scheduled'
           ? taskField('publish_time').value
           : null,
-      title_en: taskType === 'digest' ? taskField('title_en').value.trim() : null,
       publish_mode: taskType === 'digest' ? taskField('publish_mode').value : null,
     };
   }
@@ -717,10 +709,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     const payload = taskPayload();
     if (!payload.name) {
       toast('任务名称必填', 'error');
-      return;
-    }
-    if (payload.task_type === 'digest' && !payload.title_en) {
-      toast('英文日报标题必填', 'error');
       return;
     }
     if (
@@ -1024,9 +1012,8 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
           }</td>
           <td class="mono">${job.raw_count} / ${job.selected_count}</td>
           <td>${
-            job.post_id_zh
-              ? `<a class="btn btn--sm" href="/admin/posts/edit?id=${job.post_id_zh}">中文</a> ` +
-                (job.post_id_en ? `<a class="btn btn--sm" href="/admin/posts/edit?id=${job.post_id_en}">EN</a>` : '')
+            job.post_id
+              ? `<a class="btn btn--sm" href="/admin/posts/edit?id=${job.post_id}">日报</a>`
               : '<span style="color:var(--text-3)">—</span>'
           }</td>
           <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(job.error_message ?? '')}">${

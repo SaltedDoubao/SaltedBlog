@@ -26,7 +26,7 @@ use crate::state::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/posts", get(list_posts))
-        .route("/posts/{lang}/{slug}", get(post_detail))
+        .route("/posts/{slug}", get(post_detail))
         .route("/archive", get(archive))
         .route("/taxonomy", get(taxonomy))
         .route("/search", get(search))
@@ -46,17 +46,14 @@ fn lang_of(query_lang: Option<&str>) -> ApiResult<String> {
     Ok(lang.to_string())
 }
 
-fn published_filter(lang: &str) -> Condition {
-    Condition::all()
-        .add(posts::Column::Lang.eq(lang))
-        .add(posts::Column::Status.eq(posts::STATUS_PUBLISHED))
+fn published_filter() -> Condition {
+    Condition::all().add(posts::Column::Status.eq(posts::STATUS_PUBLISHED))
 }
 
 // ---------- 文章列表 ----------
 
 #[derive(Deserialize)]
 struct ListQuery {
-    lang: Option<String>,
     page: Option<u64>,
     page_size: Option<u64>,
     category: Option<String>,
@@ -68,11 +65,10 @@ async fn list_posts(
     State(state): State<AppState>,
     Query(q): Query<ListQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let lang = lang_of(q.lang.as_deref())?;
     let page = q.page.unwrap_or(1).max(1);
     let page_size = q.page_size.unwrap_or(10).clamp(1, 50);
 
-    let mut cond = published_filter(&lang);
+    let mut cond = published_filter();
 
     if let Some(cat_slug) = q.category.as_deref().filter(|s| !s.is_empty()) {
         let cat = categories::Entity::find()
@@ -132,13 +128,10 @@ async fn list_posts(
 
 async fn post_detail(
     State(state): State<AppState>,
-    Path((lang, slug)): Path<(String, String)>,
+    Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    if !validate_lang(&lang) {
-        return Err(ApiError::bad_request("invalid lang"));
-    }
     let post = posts::Entity::find()
-        .filter(published_filter(&lang).add(posts::Column::Slug.eq(slug)))
+        .filter(published_filter().add(posts::Column::Slug.eq(slug)))
         .one(&state.db())
         .await?
         .ok_or_else(ApiError::not_found)?;
@@ -149,24 +142,10 @@ async fn post_detail(
         .and_then(|s| serde_json::from_str(s).ok())
         .unwrap_or_else(|| json!([]));
 
-    // 同组翻译版本
-    let translations: Vec<serde_json::Value> = posts::Entity::find()
-        .filter(
-            Condition::all()
-                .add(posts::Column::GroupId.eq(post.group_id.clone()))
-                .add(posts::Column::Id.ne(post.id))
-                .add(posts::Column::Status.eq(posts::STATUS_PUBLISHED)),
-        )
-        .all(&state.db())
-        .await?
-        .iter()
-        .map(|p| json!({ "lang": p.lang, "slug": p.slug, "title": p.title }))
-        .collect();
-
     // 系列内文章
     let series_posts: Vec<serde_json::Value> = if let Some(series_id) = post.series_id {
         posts::Entity::find()
-            .filter(published_filter(&post.lang).add(posts::Column::SeriesId.eq(series_id)))
+            .filter(published_filter().add(posts::Column::SeriesId.eq(series_id)))
             .order_by_asc(posts::Column::SeriesOrder)
             .order_by_asc(posts::Column::PublishedAt)
             .all(&state.db())
@@ -187,7 +166,7 @@ async fn post_detail(
     let (prev, next) = if let Some(published_at) = post.published_at {
         let prev = posts::Entity::find()
             .filter(
-                published_filter(&post.lang)
+                published_filter()
                     .add(posts::Column::PublishedAt.lt(published_at))
                     .add(posts::Column::Id.ne(post.id)),
             )
@@ -196,7 +175,7 @@ async fn post_detail(
             .await?;
         let next = posts::Entity::find()
             .filter(
-                published_filter(&post.lang)
+                published_filter()
                     .add(posts::Column::PublishedAt.gt(published_at))
                     .add(posts::Column::Id.ne(post.id)),
             )
@@ -223,7 +202,6 @@ async fn post_detail(
         "post": item,
         "content_html": content_html,
         "toc": toc,
-        "translations": translations,
         "series_posts": series_posts,
         "prev": nav_json(prev),
         "next": nav_json(next),
@@ -237,13 +215,9 @@ struct LangQuery {
     lang: Option<String>,
 }
 
-async fn archive(
-    State(state): State<AppState>,
-    Query(q): Query<LangQuery>,
-) -> ApiResult<impl IntoResponse> {
-    let lang = lang_of(q.lang.as_deref())?;
+async fn archive(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let items: Vec<serde_json::Value> = posts::Entity::find()
-        .filter(published_filter(&lang))
+        .filter(published_filter())
         .order_by_desc(posts::Column::PublishedAt)
         .all(&state.db())
         .await?
@@ -260,13 +234,9 @@ async fn archive(
 
 // ---------- 分类法总览 ----------
 
-async fn taxonomy(
-    State(state): State<AppState>,
-    Query(q): Query<LangQuery>,
-) -> ApiResult<impl IntoResponse> {
-    let lang = lang_of(q.lang.as_deref())?;
+async fn taxonomy(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let published = posts::Entity::find()
-        .filter(published_filter(&lang))
+        .filter(published_filter())
         .all(&state.db())
         .await?;
     let post_ids: Vec<i32> = published.iter().map(|p| p.id).collect();
@@ -340,7 +310,6 @@ async fn taxonomy(
 
 #[derive(Deserialize)]
 struct SearchQuery {
-    lang: Option<String>,
     q: Option<String>,
 }
 
@@ -348,7 +317,6 @@ async fn search(
     State(state): State<AppState>,
     Query(query): Query<SearchQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let lang = lang_of(query.lang.as_deref())?;
     let raw = query.q.unwrap_or_default().trim().to_string();
     if raw.is_empty() {
         return Ok(Json(json!({ "items": [], "q": raw })));
@@ -359,7 +327,7 @@ async fn search(
     for term in &terms {
         term_cond = term_cond.add(posts::Column::SearchText.contains(term));
     }
-    let cond = published_filter(&lang).add(
+    let cond = published_filter().add(
         Condition::any()
             .add(term_cond)
             .add(posts::Column::Title.contains(&raw)),
@@ -426,7 +394,7 @@ async fn about_page(
 
 // ---------- 最新日报（主页「最新情报」与滚动字幕数据源） ----------
 
-/// 返回最新一期「生成成功且中文文章已发布」的日报；不存在时 digest 为 null
+/// 返回最新一期生成成功且已发布的中文日报；不存在时 digest 为 null
 async fn latest_digest(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
     let jobs = digest_jobs::Entity::find()
         .filter(digest_jobs::Column::Status.eq(digest_jobs::STATUS_SUCCESS))
@@ -443,7 +411,7 @@ async fn latest_digest(State(state): State<AppState>) -> ApiResult<impl IntoResp
         let Ok(doc) = serde_json::from_str::<DigestDoc>(raw) else {
             continue;
         };
-        let Some(post_id) = job.post_id_zh else {
+        let Some(post_id) = job.post_id else {
             continue;
         };
         let Some(post) = posts::Entity::find_by_id(post_id).one(&state.db()).await? else {
@@ -457,10 +425,8 @@ async fn latest_digest(State(state): State<AppState>) -> ApiResult<impl IntoResp
             "digest": {
                 "date": job.digest_date,
                 "slug": post.slug,
-                "title_zh": doc.title_zh,
-                "title_en": doc.title_en,
-                "summary_zh": doc.summary_zh,
-                "summary_en": doc.summary_en,
+                "title": doc.title,
+                "summary": doc.summary,
                 "item_count": doc.item_count(),
                 "generated_at": job.finished_at,
                 "items": items,
@@ -480,7 +446,7 @@ async fn sitemap_data(State(state): State<AppState>) -> ApiResult<impl IntoRespo
         .iter()
         .map(|p| {
             json!({
-                "lang": p.lang, "slug": p.slug,
+                "slug": p.slug,
                 "updated_at": p.updated_at, "published_at": p.published_at
             })
         })

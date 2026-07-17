@@ -67,8 +67,6 @@ impl From<&series::Model> for SeriesOut {
 #[derive(Serialize)]
 pub struct PostListItem {
     pub id: i32,
-    pub group_id: String,
-    pub lang: String,
     pub slug: String,
     pub title: String,
     pub summary: Option<String>,
@@ -159,8 +157,6 @@ pub async fn hydrate_posts(
                 .map(SeriesOut::from),
             tags: post_tag_map.remove(&p.id).unwrap_or_default(),
             id: p.id,
-            group_id: p.group_id,
-            lang: p.lang,
             slug: p.slug,
             title: p.title,
             summary: p.summary,

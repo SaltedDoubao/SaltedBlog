@@ -13,7 +13,6 @@ pub struct Model {
     pub interval_hours: Option<i32>,
     pub generation_time: Option<String>,
     pub publish_time: Option<String>,
-    pub title_en: Option<String>,
     pub publish_mode: Option<String>,
     pub last_scheduled_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,

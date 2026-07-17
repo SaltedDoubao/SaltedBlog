@@ -1,9 +1,8 @@
-//! 日报生成编排：候选选稿 → LLM 双语整理 → 构建 Markdown → 创建/覆盖文章 → job 落库
+//! 日报生成编排：候选选稿 → LLM 中文整理 → 构建 Markdown → 创建/覆盖文章 → job 落库
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, Set,
 };
-use uuid::Uuid;
 
 use crate::entities::{digest_jobs, news_items, news_tasks, posts};
 use crate::news::{llm, load_settings, local_date_string, ranker, seed, tasks, NewsSettings};
@@ -94,8 +93,7 @@ pub async fn generate(
             model.selected_count = Set(outcome.selected_count as i32);
             model.llm_model = Set(Some(settings.llm_model.clone()));
             model.result_json = Set(serde_json::to_string(&outcome.doc).ok());
-            model.post_id_zh = Set(Some(outcome.post_id_zh));
-            model.post_id_en = Set(Some(outcome.post_id_en));
+            model.post_id = Set(Some(outcome.post_id));
             model.error_message = Set(None);
             model.finished_at = Set(Some(Utc::now().into()));
             Ok(model.update(&db).await?)
@@ -117,8 +115,7 @@ struct GenerationOutcome {
     doc: llm::DigestDoc,
     raw_count: usize,
     selected_count: usize,
-    post_id_zh: i32,
-    post_id_en: i32,
+    post_id: i32,
 }
 
 async fn run_generation(
@@ -159,47 +156,21 @@ async fn run_generation(
         anyhow::anyhow!("LLM 输出无法解析为日报 JSON：{head}")
     })?;
     doc.date = date.to_string();
-    doc.title_zh = digest_title(&task.name, date);
-    doc.title_en = digest_title(
-        task.title_en.as_deref().unwrap_or("AI Frontier Daily"),
-        date,
-    );
+    doc.title = digest_title(&task.name, date);
 
-    // 构建双语文章
+    // 构建单篇中文日报
     let category_id = seed::ensure_digest_category_id(db).await?;
     let slug = digest_slug(task.id, date);
-    let markdown_zh = build_markdown(&doc, "zh", pool.raw_count);
-    let markdown_en = build_markdown(&doc, "en", pool.raw_count);
-
-    let group_id = existing_group_id(db, &slug)
-        .await?
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
-    let post_zh = upsert_post(
+    let markdown = build_markdown(&doc, pool.raw_count);
+    let post = upsert_post(
         state,
         db,
         UpsertPost {
-            lang: "zh",
             slug: &slug,
-            title: &doc.title_zh,
-            summary: &doc.summary_zh,
-            markdown: &markdown_zh,
+            title: &doc.title,
+            summary: &doc.summary,
+            markdown: &markdown,
             category_id,
-            group_id: &group_id,
-            publish: false,
-        },
-    )
-    .await?;
-    let post_en = upsert_post(
-        state,
-        db,
-        UpsertPost {
-            lang: "en",
-            slug: &slug,
-            title: &doc.title_en,
-            summary: &doc.summary_en,
-            markdown: &markdown_en,
-            category_id,
-            group_id: &group_id,
             publish: false,
         },
     )
@@ -224,31 +195,20 @@ async fn run_generation(
         raw_count: pool.raw_count,
         selected_count: ids.len(),
         doc,
-        post_id_zh: post_zh.id,
-        post_id_en: post_en.id,
+        post_id: post.id,
     })
 }
 
-async fn existing_group_id(db: &DatabaseConnection, slug: &str) -> anyhow::Result<Option<String>> {
-    let found = posts::Entity::find()
-        .filter(posts::Column::Slug.eq(slug))
-        .one(db)
-        .await?;
-    Ok(found.map(|p| p.group_id))
-}
-
 struct UpsertPost<'a> {
-    lang: &'a str,
     slug: &'a str,
     title: &'a str,
     summary: &'a str,
     markdown: &'a str,
     category_id: i32,
-    group_id: &'a str,
     publish: bool,
 }
 
-/// 创建或覆盖日报文章：覆盖时保留 view_count / created_at / published_at / group_id
+/// 创建或覆盖日报文章：覆盖时保留 view_count / created_at / published_at
 async fn upsert_post(
     state: &AppState,
     db: &DatabaseConnection,
@@ -260,11 +220,7 @@ async fn upsert_post(
     let summary = normalize_summary(input.summary);
 
     let existing = posts::Entity::find()
-        .filter(
-            Condition::all()
-                .add(posts::Column::Lang.eq(input.lang))
-                .add(posts::Column::Slug.eq(input.slug)),
-        )
+        .filter(posts::Column::Slug.eq(input.slug))
         .one(db)
         .await?;
 
@@ -300,8 +256,6 @@ async fn upsert_post(
                 posts::STATUS_DRAFT
             };
             posts::ActiveModel {
-                group_id: Set(input.group_id.to_string()),
-                lang: Set(input.lang.to_string()),
                 slug: Set(input.slug.to_string()),
                 title: Set(input.title.to_string()),
                 summary: Set(summary),
@@ -327,7 +281,7 @@ async fn upsert_post(
     Ok(saved)
 }
 
-/// 发布某次已成功生成的双语日报，并在执行记录中落下发布结果。
+/// 发布某次已成功生成的中文日报，并在执行记录中落下发布结果。
 pub async fn publish_job(
     db: &DatabaseConnection,
     job: digest_jobs::Model,
@@ -337,18 +291,18 @@ pub async fn publish_job(
         .scheduled_publish_at
         .ok_or_else(|| anyhow::anyhow!("日报没有计划发布时间"))?;
     let result = async {
-        for post_id in [job.post_id_zh, job.post_id_en] {
-            let id = post_id.ok_or_else(|| anyhow::anyhow!("日报文章不存在"))?;
-            let row = posts::Entity::find_by_id(id)
-                .one(db)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("日报文章 #{id} 不存在"))?;
-            let mut model: posts::ActiveModel = row.into();
-            model.status = Set(posts::STATUS_PUBLISHED.to_string());
-            model.published_at = Set(Some(published_at));
-            model.updated_at = Set(now.into());
-            model.update(db).await?;
-        }
+        let id = job
+            .post_id
+            .ok_or_else(|| anyhow::anyhow!("日报文章不存在"))?;
+        let row = posts::Entity::find_by_id(id)
+            .one(db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("日报文章 #{id} 不存在"))?;
+        let mut model: posts::ActiveModel = row.into();
+        model.status = Set(posts::STATUS_PUBLISHED.to_string());
+        model.published_at = Set(Some(published_at));
+        model.updated_at = Set(now.into());
+        model.update(db).await?;
         anyhow::Ok(())
     }
     .await;
@@ -380,12 +334,12 @@ fn normalize_summary(raw: &str) -> Option<String> {
 // ---------- Prompt 构建 ----------
 
 fn build_system_prompt(extra: &str) -> String {
-    let mut prompt = r#"你是一名科技情报编辑，负责把多信源的原始资讯整理成一份中英双语的《AI 前沿日报》。
+    let mut prompt = r#"你是一名科技情报编辑，负责把多信源的原始资讯整理成一份中文《AI 前沿日报》。
 
 要求：
 1. 合并重复或相似的信息：不同来源报道同一事件只保留一条（摘要中可提及多来源佐证）。
 2. 从候选中挑选最值得关注的 8～15 条，按主题分为 2～5 个分节（如：模型与研究 / 开源项目 / 行业动态 / 社区热议，可按当日内容调整命名）。
-3. 每条产出中文与英文两个版本的标题、摘要（1～2 句）与「为什么值得关注」（1 句）。英文要地道，不要机械直译；中文保留专有名词原文（如模型名、库名）。
+3. 所有标题、摘要（1～2 句）与「为什么值得关注」（1 句）均使用简体中文；专有名词保留原文（如模型名、库名）。
 4. importance 取 1～5：5=今日最重要（全篇至多 2 条），1=普通。
 5. tags 为 1～3 个简短英文小写标签（如 "llm"、"agents"、"rust"）。
 6. 不得编造输入中不存在的信息；source 与 url 必须原样取自输入。
@@ -394,16 +348,16 @@ fn build_system_prompt(extra: &str) -> String {
 输出 JSON schema：
 {
   "date": "YYYY-MM-DD",
-  "title_zh": "标题", "title_en": "Title",
-  "summary_zh": "今日整体综述（2～3 句）", "summary_en": "Overall summary (2-3 sentences)",
+  "title": "标题",
+  "summary": "今日整体综述（2～3 句）",
   "sections": [
     {
-      "name_zh": "分节名", "name_en": "Section Name",
+      "name": "分节名",
       "items": [
         {
-          "title_zh": "…", "title_en": "…",
-          "summary_zh": "…", "summary_en": "…",
-          "why_zh": "…", "why_en": "…",
+          "title": "…",
+          "summary": "…",
+          "why": "…",
           "source": "来源名称", "url": "链接，无则为 null",
           "importance": 1, "tags": ["tag"]
         }
@@ -517,89 +471,64 @@ fn importance_stars(importance: i32) -> String {
     "★".repeat(filled) + &"☆".repeat(5 - filled)
 }
 
-pub fn build_markdown(doc: &llm::DigestDoc, lang: &str, raw_count: usize) -> String {
-    let zh = lang != "en";
+pub fn build_markdown(doc: &llm::DigestDoc, raw_count: usize) -> String {
     let mut out = String::new();
 
     let selected = doc.item_count();
-    if zh {
-        out.push_str(&format!(
-            "> 本文由 AI 情报管线自动生成：从过去 24 小时的 {raw_count} 条候选情报中精选 {selected} 条。所有链接均指向外部原文，内容请注意甄别。\n\n"
-        ));
-    } else {
-        out.push_str(&format!(
-            "> Auto-generated by the AI intelligence pipeline: {selected} items curated from {raw_count} candidates collected in the past 24 hours. All links point to external sources.\n\n"
-        ));
-    }
+    out.push_str(&format!(
+        "> 本文由 AI 情报管线自动生成：从过去 24 小时的 {raw_count} 条候选情报中精选 {selected} 条。所有链接均指向外部原文，内容请注意甄别。\n\n"
+    ));
 
-    let overview = if zh { &doc.summary_zh } else { &doc.summary_en };
+    let overview = &doc.summary;
     if !overview.trim().is_empty() {
         out.push_str(&md_escape(overview.trim()));
         out.push_str("\n\n");
     }
 
     for section in &doc.sections {
-        let name = if zh {
-            &section.name_zh
-        } else {
-            &section.name_en
-        };
+        let name = &section.name;
         let name = if name.trim().is_empty() {
-            if zh {
-                "情报"
-            } else {
-                "Intel"
-            }
+            "情报"
         } else {
             name.trim()
         };
         out.push_str(&format!("## {}\n\n", md_escape(name)));
 
         for item in &section.items {
-            let title = if zh { &item.title_zh } else { &item.title_en };
-            let title = md_escape(title.trim());
+            let title = md_escape(item.title.trim());
             out.push_str(&format!("<a id=\"{}\"></a>\n\n", item.anchor));
             match item.url.as_deref().and_then(md_url) {
                 Some(url) => out.push_str(&format!("### [{title}]({url})\n\n")),
                 None => out.push_str(&format!("### {title}\n\n")),
             }
 
-            let summary = if zh {
-                &item.summary_zh
-            } else {
-                &item.summary_en
-            };
+            let summary = &item.summary;
             if !summary.trim().is_empty() {
                 out.push_str(&md_escape(summary.trim()));
                 out.push_str("\n\n");
             }
 
-            let why = if zh { &item.why_zh } else { &item.why_en };
+            let why = &item.why;
             if !why.trim().is_empty() {
-                let label = if zh {
-                    "为什么值得关注"
-                } else {
-                    "Why it matters"
-                };
-                out.push_str(&format!("**{label}**：{}\n\n", md_escape(why.trim())));
+                out.push_str(&format!(
+                    "**为什么值得关注**：{}\n\n",
+                    md_escape(why.trim())
+                ));
             }
 
             let mut meta: Vec<String> = Vec::new();
             if !item.source.trim().is_empty() {
-                let label = if zh { "来源" } else { "Source" };
-                meta.push(format!("{label}：{}", md_escape(item.source.trim())));
+                meta.push(format!("来源：{}", md_escape(item.source.trim())));
             }
-            let label = if zh { "重要度" } else { "Importance" };
-            meta.push(format!("{label}：{}", importance_stars(item.importance)));
+            meta.push(format!("重要度：{}", importance_stars(item.importance)));
             if !item.tags.is_empty() {
-                let label = if zh { "标签" } else { "Tags" };
                 let tags = item
                     .tags
                     .iter()
                     .map(|t| format!("`{}`", t.replace('`', "")))
                     .collect::<Vec<_>>()
                     .join(" ");
-                meta.push(format!("{label}：{tags}"));
+                meta.push(format!("标签：{tags}"));
             }
             out.push_str(&format!("{}\n\n", meta.join(" ／ ")));
         }
@@ -613,12 +542,10 @@ mod tests {
 
     fn sample_doc() -> llm::DigestDoc {
         let raw = r#"{
-            "summary_zh": "今日焦点是 <b>模型</b>",
-            "summary_en": "Today's focus",
+            "summary": "今日焦点是 <b>模型</b>",
             "sections": [
-                {"name_zh": "模型", "name_en": "Models", "items": [
-                    {"title_zh": "新模型 [重磅]", "title_en": "New Model", "summary_zh": "摘要",
-                     "summary_en": "Summary", "why_zh": "重要", "why_en": "Important",
+                {"name": "模型", "items": [
+                    {"title": "新模型 [重磅]", "summary": "摘要", "why": "重要",
                      "source": "HN", "url": "https://example.com/a(1)", "importance": 5,
                      "tags": ["llm"]}
                 ]}
@@ -630,7 +557,7 @@ mod tests {
     #[test]
     fn markdown_contains_anchor_and_escapes() {
         let doc = sample_doc();
-        let md = build_markdown(&doc, "zh", 42);
+        let md = build_markdown(&doc, 42);
         assert!(md.contains("<a id=\"intel-1\"></a>"));
         // 标题中的方括号被转义
         assert!(md.contains("\\[重磅\\]"));
@@ -640,15 +567,6 @@ mod tests {
         assert!(md.contains("&lt;b>模型"));
         assert!(md.contains("★★★★★"));
         assert!(md.contains("从过去 24 小时的 42 条候选情报中精选 1 条"));
-    }
-
-    #[test]
-    fn markdown_english_variant() {
-        let doc = sample_doc();
-        let md = build_markdown(&doc, "en", 10);
-        assert!(md.contains("## Models"));
-        assert!(md.contains("Why it matters"));
-        assert!(md.contains("New Model"));
     }
 
     #[test]
