@@ -1,0 +1,84 @@
+{
+	http_port 8080
+	https_port 8443
+	servers {
+		trusted_proxies static {$UPSTREAM_PROXY_CIDRS:127.0.0.1/32}
+		trusted_proxies_strict
+	}
+}
+
+(access-log) {
+	log {
+		output file /var/log/caddy/access.json {
+			roll_size 50MiB
+			roll_keep 10
+			roll_keep_for 720h
+		}
+		format filter {
+			wrap json
+			fields {
+				request>headers>Authorization delete
+				request>headers>Cookie delete
+				request>headers>Proxy-Authorization delete
+				request>headers>X-Csrf-Token delete
+				request>headers>Cf-Access-Jwt-Assertion delete
+			}
+		}
+	}
+}
+
+# 公网站点仍由 Caddy 直接提供 HTTPS，管理相关路径始终返回 404。
+{$SITE_DOMAIN} {
+	import access-log
+	encode zstd gzip
+
+	@admin_surface path /admin /admin/* /api/admin/* /api/auth/*
+	respond @admin_surface 404
+
+	@backend path /api/* /uploads/* /healthz
+	handle @backend {
+		reverse_proxy api:8787
+	}
+	handle {
+		reverse_proxy web:4321
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://giscus.app; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://giscus.app; frame-src https://giscus.app; object-src 'none'; base-uri 'self'"
+	}
+}
+
+# 外部 HTTPS 在 Cloudflare 终止；Docker 内部只接受固定 cloudflared 容器来源。
+http://{$ADMIN_DOMAIN} {
+	import access-log
+	encode zstd gzip
+
+	@tunnel remote_ip {$ADMIN_ALLOWED_CIDRS:172.30.0.40/32}
+	handle @tunnel {
+		@backend path /api/* /uploads/* /healthz
+		handle @backend {
+			reverse_proxy api:8787
+		}
+		handle {
+			reverse_proxy web:4321
+		}
+	}
+	handle {
+		respond 404
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
+		Cache-Control "no-store"
+	}
+}
