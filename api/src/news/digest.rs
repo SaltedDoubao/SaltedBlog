@@ -28,7 +28,11 @@ pub fn digest_title(lang: &str, date: &str) -> String {
 
 /// 生成（或强制重新生成）当日日报。
 /// `force=false`（定时路径）：当日已存在任务则跳过；`force=true`（手动路径）：新建任务并覆盖当日文章。
-pub async fn generate(state: &AppState, trigger: &str, force: bool) -> anyhow::Result<digest_jobs::Model> {
+pub async fn generate(
+    state: &AppState,
+    trigger: &str,
+    force: bool,
+) -> anyhow::Result<digest_jobs::Model> {
     let Ok(_guard) = digest_lock().try_lock() else {
         anyhow::bail!("日报生成已在进行中");
     };
@@ -43,7 +47,10 @@ pub async fn generate(state: &AppState, trigger: &str, force: bool) -> anyhow::R
             .one(&db)
             .await?;
         if let Some(job) = existing {
-            anyhow::bail!("当日（{date}）已存在日报任务（状态 {}），如需重新生成请使用强制模式", job.status);
+            anyhow::bail!(
+                "当日（{date}）已存在日报任务（状态 {}），如需重新生成请使用强制模式",
+                job.status
+            );
         }
     }
 
@@ -138,7 +145,9 @@ async fn run_generation(
     let markdown_zh = build_markdown(&doc, "zh", pool.raw_count);
     let markdown_en = build_markdown(&doc, "en", pool.raw_count);
 
-    let group_id = existing_group_id(db, &slug).await?.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let group_id = existing_group_id(db, &slug)
+        .await?
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let post_zh = upsert_post(
         state,
         db,
@@ -361,7 +370,10 @@ fn build_user_prompt(date: &str, candidates: &[ranker::Candidate]) -> String {
             out.push_str(&format!("    链接：{url}\n"));
         }
         if let Some(at) = item.published_at {
-            out.push_str(&format!("    发布时间：{} UTC\n", at.format("%Y-%m-%d %H:%M")));
+            out.push_str(&format!(
+                "    发布时间：{} UTC\n",
+                at.format("%Y-%m-%d %H:%M")
+            ));
         }
         let brief = item
             .summary
@@ -377,7 +389,10 @@ fn build_user_prompt(date: &str, candidates: &[ranker::Candidate]) -> String {
         if let Some(extra) = item.extra_json.as_deref() {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(extra) {
                 if let Some(stars) = value.get("stars").and_then(|v| v.as_i64()) {
-                    let today = value.get("stars_today").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let today = value
+                        .get("stars_today")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
                     out.push_str(&format!("    Stars：{stars}（今日 +{today}）\n"));
                 }
                 if let Some(lang) = value.get("language").and_then(|v| v.as_str()) {
@@ -456,9 +471,17 @@ pub fn build_markdown(doc: &llm::DigestDoc, lang: &str, raw_count: usize) -> Str
     }
 
     for section in &doc.sections {
-        let name = if zh { &section.name_zh } else { &section.name_en };
+        let name = if zh {
+            &section.name_zh
+        } else {
+            &section.name_en
+        };
         let name = if name.trim().is_empty() {
-            if zh { "情报" } else { "Intel" }
+            if zh {
+                "情报"
+            } else {
+                "Intel"
+            }
         } else {
             name.trim()
         };
@@ -473,7 +496,11 @@ pub fn build_markdown(doc: &llm::DigestDoc, lang: &str, raw_count: usize) -> Str
                 None => out.push_str(&format!("### {title}\n\n")),
             }
 
-            let summary = if zh { &item.summary_zh } else { &item.summary_en };
+            let summary = if zh {
+                &item.summary_zh
+            } else {
+                &item.summary_en
+            };
             if !summary.trim().is_empty() {
                 out.push_str(&md_escape(summary.trim()));
                 out.push_str("\n\n");
@@ -481,7 +508,11 @@ pub fn build_markdown(doc: &llm::DigestDoc, lang: &str, raw_count: usize) -> Str
 
             let why = if zh { &item.why_zh } else { &item.why_en };
             if !why.trim().is_empty() {
-                let label = if zh { "为什么值得关注" } else { "Why it matters" };
+                let label = if zh {
+                    "为什么值得关注"
+                } else {
+                    "Why it matters"
+                };
                 out.push_str(&format!("**{label}**：{}\n\n", md_escape(why.trim())));
             }
 
@@ -570,6 +601,9 @@ mod tests {
     fn slug_and_title() {
         assert_eq!(digest_slug("2026-07-16"), "ai-daily-2026-07-16");
         assert_eq!(digest_title("zh", "2026-07-16"), "AI 前沿日报 | 2026-07-16");
-        assert_eq!(digest_title("en", "2026-07-16"), "AI Frontier Daily | 2026-07-16");
+        assert_eq!(
+            digest_title("en", "2026-07-16"),
+            "AI Frontier Daily | 2026-07-16"
+        );
     }
 }

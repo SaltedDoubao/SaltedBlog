@@ -37,18 +37,6 @@ const TITLE_MAX: usize = 300;
 const SUMMARY_MAX: usize = 2000;
 const CONTENT_MAX: usize = 8000;
 
-/// 进程级共享 HTTP 客户端（30s 超时、gzip、伪装浏览器 UA）
-pub fn http_client() -> &'static reqwest::Client {
-    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .user_agent("Mozilla/5.0 (compatible; SaltedBlogNews/1.0)")
-            .build()
-            .expect("build http client")
-    })
-}
-
 /// 工厂入口：按类型采集，未知类型显式报错
 pub async fn fetch_source_items(source: &news_sources::Model) -> FetchOutcome {
     let max_items = source.max_items.clamp(1, 100) as usize;
@@ -62,18 +50,17 @@ pub async fn fetch_source_items(source: &news_sources::Model) -> FetchOutcome {
 // ---------- RSS / Atom ----------
 
 async fn fetch_rss(url: &str, max_items: usize) -> FetchOutcome {
-    let response = match http_client().get(url).send().await {
-        Ok(r) => r,
-        Err(e) => return FetchOutcome::fail(format!("http error: {e}"), None),
-    };
-    let status = response.status().as_u16() as i32;
-    if !response.status().is_success() {
+    let (status_code, bytes) =
+        match crate::outbound::get_bytes(url, 8 * 1024 * 1024, std::time::Duration::from_secs(30))
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return FetchOutcome::fail(format!("http error: {e}"), None),
+        };
+    let status = status_code.as_u16() as i32;
+    if !status_code.is_success() {
         return FetchOutcome::fail(format!("http status {status}"), Some(status));
     }
-    let bytes = match response.bytes().await {
-        Ok(b) => b,
-        Err(e) => return FetchOutcome::fail(format!("read body error: {e}"), Some(status)),
-    };
     let feed = match feed_rs::parser::parse(&bytes[..]) {
         Ok(f) => f,
         Err(e) => return FetchOutcome::fail(format!("feed parse error: {e}"), Some(status)),
@@ -148,15 +135,18 @@ async fn fetch_github_trending(source: &news_sources::Model, max_items: usize) -
         None => format!("https://github.com/trending?since={since}"),
     };
 
-    let response = match http_client().get(&url).send().await {
-        Ok(r) => r,
-        Err(e) => return FetchOutcome::fail(format!("http error: {e}"), None),
-    };
-    let status = response.status().as_u16() as i32;
-    if !response.status().is_success() {
+    let (status_code, bytes) =
+        match crate::outbound::get_bytes(&url, 8 * 1024 * 1024, std::time::Duration::from_secs(30))
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return FetchOutcome::fail(format!("http error: {e}"), None),
+        };
+    let status = status_code.as_u16() as i32;
+    if !status_code.is_success() {
         return FetchOutcome::fail(format!("http status {status}"), Some(status));
     }
-    let html = match response.text().await {
+    let html = match String::from_utf8(bytes) {
         Ok(t) => t,
         Err(e) => return FetchOutcome::fail(format!("read body error: {e}"), Some(status)),
     };
@@ -291,7 +281,10 @@ mod tests {
         assert_eq!(items.len(), 1);
         let item = &items[0];
         assert_eq!(item.title, "rust-lang/rust");
-        assert_eq!(item.url.as_deref(), Some("https://github.com/rust-lang/rust"));
+        assert_eq!(
+            item.url.as_deref(),
+            Some("https://github.com/rust-lang/rust")
+        );
         assert_eq!(item.author.as_deref(), Some("rust-lang"));
         let extra = item.extra.as_ref().unwrap();
         assert_eq!(extra["stars"], 104000);
@@ -307,7 +300,12 @@ mod tests {
                 <a href="/{name}/stargazers">500</a></article>"#
             )
         };
-        let html = format!("<html><body>{}{}{}</body></html>", row("a/1"), row("b/2"), row("c/3"));
+        let html = format!(
+            "<html><body>{}{}{}</body></html>",
+            row("a/1"),
+            row("b/2"),
+            row("c/3")
+        );
         let items = parse_github_trending(&html, 0, 2);
         assert_eq!(items.len(), 2);
     }

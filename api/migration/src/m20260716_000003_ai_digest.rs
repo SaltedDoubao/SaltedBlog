@@ -19,7 +19,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(NewsSources::Name).string_len(128).not_null())
-                    .col(ColumnDef::new(NewsSources::SourceType).string_len(32).not_null())
+                    .col(
+                        ColumnDef::new(NewsSources::SourceType)
+                            .string_len(32)
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(NewsSources::Url).string_len(500).not_null())
                     .col(ColumnDef::new(NewsSources::Category).string_len(64))
                     .col(
@@ -96,7 +100,11 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(NewsItems::ExtraJson).text())
-                    .col(ColumnDef::new(NewsItems::DedupKey).string_len(200).not_null())
+                    .col(
+                        ColumnDef::new(NewsItems::DedupKey)
+                            .string_len(200)
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(NewsItems::UrlHash).string_len(64))
                     .col(ColumnDef::new(NewsItems::TitleHash).string_len(64))
                     .col(ColumnDef::new(NewsItems::ContentHash).string_len(64))
@@ -168,7 +176,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(NewsFetchLogs::SourceId).integer().not_null())
-                    .col(ColumnDef::new(NewsFetchLogs::Status).string_len(16).not_null())
+                    .col(
+                        ColumnDef::new(NewsFetchLogs::Status)
+                            .string_len(16)
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(NewsFetchLogs::FetchedCount)
                             .integer()
@@ -235,8 +247,16 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(DigestJobs::DigestDate).string_len(10).not_null())
-                    .col(ColumnDef::new(DigestJobs::Trigger).string_len(16).not_null())
+                    .col(
+                        ColumnDef::new(DigestJobs::DigestDate)
+                            .string_len(10)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(DigestJobs::Trigger)
+                            .string_len(16)
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(DigestJobs::Status).string_len(16).not_null())
                     .col(
                         ColumnDef::new(DigestJobs::RawCount)

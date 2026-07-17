@@ -94,11 +94,8 @@ impl DigestDoc {
 
     /// 全部条目按 importance 降序（同级保持文档顺序）的引用列表
     pub fn items_by_importance(&self) -> Vec<&DigestItem> {
-        let mut items: Vec<&DigestItem> = self
-            .sections
-            .iter()
-            .flat_map(|s| s.items.iter())
-            .collect();
+        let mut items: Vec<&DigestItem> =
+            self.sections.iter().flat_map(|s| s.items.iter()).collect();
         items.sort_by(|a, b| b.importance.cmp(&a.importance));
         items
     }
@@ -154,18 +151,6 @@ pub struct LlmRequest<'a> {
     pub user_prompt: &'a str,
 }
 
-/// LLM 专用客户端：长超时（生成大 JSON 可能较慢）
-fn llm_client() -> &'static reqwest::Client {
-    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(600))
-            .connect_timeout(std::time::Duration::from_secs(30))
-            .build()
-            .expect("build llm client")
-    })
-}
-
 /// 调用 chat/completions，返回首个 choice 的文本内容
 pub async fn chat(req: &LlmRequest<'_>) -> anyhow::Result<String> {
     let url = format!("{}/chat/completions", req.base_url.trim_end_matches('/'));
@@ -177,20 +162,20 @@ pub async fn chat(req: &LlmRequest<'_>) -> anyhow::Result<String> {
         ],
         "temperature": 0.3,
     });
-    let response = llm_client()
-        .post(&url)
-        .bearer_auth(req.api_key)
-        .json(&body)
-        .send()
-        .await?;
-    let status = response.status();
-    let text = response.text().await?;
+    let (status, text) = crate::outbound::post_json(
+        &url,
+        req.api_key,
+        &body,
+        2 * 1024 * 1024,
+        std::time::Duration::from_secs(600),
+    )
+    .await?;
     if !status.is_success() {
         let brief: String = text.chars().take(500).collect();
         anyhow::bail!("llm http {status}: {brief}");
     }
-    let value: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| anyhow::anyhow!("llm response not json: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| anyhow::anyhow!("llm response not json: {e}"))?;
     let content = value["choices"][0]["message"]["content"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("llm response missing choices[0].message.content"))?;

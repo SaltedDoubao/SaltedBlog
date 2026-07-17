@@ -8,8 +8,8 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -204,7 +204,9 @@ async fn delete_source(
         .filter(news_fetch_logs::Column::SourceId.eq(id))
         .exec(&state.db())
         .await?;
-    let res = news_sources::Entity::delete_by_id(id).exec(&state.db()).await?;
+    let res = news_sources::Entity::delete_by_id(id)
+        .exec(&state.db())
+        .await?;
     if res.rows_affected == 0 {
         return Err(ApiError::not_found());
     }
@@ -441,7 +443,10 @@ async fn generate_digest(
         }
     });
 
-    Ok((StatusCode::ACCEPTED, Json(json!({ "accepted": true, "date": date }))))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(json!({ "accepted": true, "date": date })),
+    ))
 }
 
 async fn source_name_map(

@@ -183,7 +183,13 @@ mod tests {
 
     #[test]
     fn summary_and_content_participate() {
-        let eval = evaluate("title", Some("mentions rust here"), None, Some("rust"), None);
+        let eval = evaluate(
+            "title",
+            Some("mentions rust here"),
+            None,
+            Some("rust"),
+            None,
+        );
         assert!(eval.accepted);
         let eval = evaluate("title", None, Some("deep content rust"), Some("rust"), None);
         assert!(eval.accepted);

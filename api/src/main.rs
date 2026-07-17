@@ -3,7 +3,9 @@ mod backup;
 mod config;
 mod entities;
 mod error;
+mod logging;
 mod news;
+mod outbound;
 mod render;
 mod routes;
 mod state;
@@ -12,7 +14,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use migration::{Migrator, MigratorTrait};
-use sea_orm::{ActiveModelTrait, Database, EntityTrait, PaginatorTrait, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, Database, EntityTrait, PaginatorTrait, QueryFilter, Set,
+};
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Config;
@@ -28,6 +32,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     tracing_subscriber::fmt()
+        .json()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
 
@@ -35,6 +40,10 @@ async fn main() -> anyhow::Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     let cfg = Config::from_env();
+    cfg.validate()?;
+    let command = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "serve".to_string());
 
     // SQLite：确保数据库文件所在目录存在
     if let Some(path) = cfg
@@ -52,13 +61,55 @@ async fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(&cfg.backup_dir)?;
 
     tracing::info!("connecting to database...");
-    let db = Database::connect(&cfg.database_url).await?;
-    tracing::info!("running migrations...");
-    Migrator::up(&db, None).await?;
-
-    bootstrap_admin(&db, &cfg).await?;
-    seed_settings(&db).await?;
-    news::seed::seed_defaults(&db).await?;
+    let connect_url = if matches!(command.as_str(), "migrate" | "reset-mfa") {
+        &cfg.database_maintenance_url
+    } else {
+        &cfg.database_url
+    };
+    let db = Database::connect(connect_url).await?;
+    if command == "migrate" || cfg.app_env != "production" {
+        tracing::info!("running migrations...");
+        Migrator::up(&db, None).await?;
+        bootstrap_admin(&db, &cfg).await?;
+        seed_settings(&db).await?;
+        news::seed::seed_defaults(&db).await?;
+        rerender_stored_posts(&db).await?;
+    } else {
+        let pending = Migrator::get_pending_migrations(&db).await?;
+        anyhow::ensure!(
+            pending.is_empty(),
+            "database has pending migrations; run salted-api migrate"
+        );
+    }
+    if command == "migrate" {
+        tracing::info!("migration command completed");
+        return Ok(());
+    }
+    if command == "reset-mfa" {
+        let username = std::env::args()
+            .nth(2)
+            .unwrap_or_else(|| cfg.admin_username.clone());
+        let user = entities::users::Entity::find()
+            .filter(entities::users::Column::Username.eq(&username))
+            .one(&db)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("admin user not found"))?;
+        let mut model: entities::users::ActiveModel = user.clone().into();
+        model.mfa_secret_enc = Set(None);
+        model.mfa_enabled_at = Set(None);
+        model.last_totp_step = Set(None);
+        model.update(&db).await?;
+        entities::mfa_recovery_codes::Entity::delete_many()
+            .filter(entities::mfa_recovery_codes::Column::UserId.eq(user.id))
+            .exec(&db)
+            .await?;
+        entities::sessions::Entity::delete_many()
+            .filter(entities::sessions::Column::UserId.eq(user.id))
+            .exec(&db)
+            .await?;
+        tracing::warn!(username = %username, "MFA reset; next login must enroll again");
+        return Ok(());
+    }
 
     let state = Arc::new(AppStateInner::new(
         db,
@@ -67,7 +118,15 @@ async fn main() -> anyhow::Result<()> {
         LoginLimiter::new(),
     ));
 
+    if command == "backup" {
+        let name = backup::create_backup(&state).await?;
+        println!("{name}");
+        return Ok(());
+    }
+
+    logging::spawn_writer(state.clone()).await;
     news::scheduler::spawn(state.clone());
+    logging::spawn_cleanup(state.clone());
 
     let app = routes::build_router(state.clone());
     let listener = tokio::net::TcpListener::bind(&state.cfg.bind_addr).await?;
@@ -78,6 +137,29 @@ async fn main() -> anyhow::Result<()> {
     )
     .with_graceful_shutdown(shutdown_signal())
     .await?;
+    Ok(())
+}
+
+async fn rerender_stored_posts(db: &sea_orm::DatabaseConnection) -> anyhow::Result<()> {
+    let rows = entities::posts::Entity::find().all(db).await?;
+    let mut changed = 0usize;
+    for row in rows {
+        let rendered = render::render_markdown(&row.content_md);
+        if rendered.html == row.content_html {
+            continue;
+        }
+        let mut model: entities::posts::ActiveModel = row.into();
+        model.content_html = Set(rendered.html);
+        model.toc_json = Set(Some(serde_json::to_string(&rendered.toc)?));
+        model.update(db).await?;
+        changed += 1;
+    }
+    if changed > 0 {
+        tracing::warn!(
+            changed,
+            "re-rendered stored posts through the HTML sanitizer"
+        );
+    }
     Ok(())
 }
 
@@ -93,7 +175,9 @@ async fn bootstrap_admin(db: &sea_orm::DatabaseConnection, cfg: &Config) -> anyh
         return Ok(());
     }
     if cfg.admin_password.is_empty() {
-        tracing::warn!("users table is empty and ADMIN_PASSWORD is not set; admin login unavailable");
+        tracing::warn!(
+            "users table is empty and ADMIN_PASSWORD is not set; admin login unavailable"
+        );
         return Ok(());
     }
     let hash = auth::hash_password(&cfg.admin_password)?;
@@ -119,24 +203,57 @@ async fn seed_settings(db: &sea_orm::DatabaseConnection) -> anyhow::Result<()> {
         ("home_eyebrow_en", "PERSONAL BLOG / OVER THE FRONTIER"),
         ("home_news_title_zh", "最新情报"),
         ("home_news_title_en", "Latest Intelligence"),
-        ("home_news_description_zh", "由 AI 情报管线每日聚合的前沿信号，点击进入完整日报。"),
-        ("home_news_description_en", "Frontier signals aggregated daily by the AI intel pipeline. Open the full digest."),
+        (
+            "home_news_description_zh",
+            "由 AI 情报管线每日聚合的前沿信号，点击进入完整日报。",
+        ),
+        (
+            "home_news_description_en",
+            "Frontier signals aggregated daily by the AI intel pipeline. Open the full digest.",
+        ),
         ("home_world_title_zh", "内容疆域"),
         ("home_world_title_en", "Content Frontier"),
-        ("home_world_description_zh", "沿分类、系列与时间坐标进入博客的不同区域。"),
-        ("home_world_description_en", "Enter the archive through categories, series, and chronological coordinates."),
+        (
+            "home_world_description_zh",
+            "沿分类、系列与时间坐标进入博客的不同区域。",
+        ),
+        (
+            "home_world_description_en",
+            "Enter the archive through categories, series, and chronological coordinates.",
+        ),
         ("home_system_title_zh", "内容部署系统"),
         ("home_system_title_en", "Content Deployment System"),
-        ("home_system_description_zh", "通过文章网络、分类矩阵与全文扫描定位所需内容。"),
-        ("home_system_description_en", "Locate knowledge through the post network, taxonomy matrix, and full-text scanner."),
+        (
+            "home_system_description_zh",
+            "通过文章网络、分类矩阵与全文扫描定位所需内容。",
+        ),
+        (
+            "home_system_description_en",
+            "Locate knowledge through the post network, taxonomy matrix, and full-text scanner.",
+        ),
         ("home_operator_title_zh", "站点档案"),
         ("home_operator_title_en", "Site Personnel Archive"),
-        ("home_operator_description_zh", "读取博主、站点与连接网络的授权档案。"),
-        ("home_operator_description_en", "Read the authorized records of the author, the site, and its network."),
+        (
+            "home_operator_description_zh",
+            "读取博主、站点与连接网络的授权档案。",
+        ),
+        (
+            "home_operator_description_en",
+            "Read the authorized records of the author, the site, and its network.",
+        ),
         ("home_protocol_title_zh", "跨越边界\n直至下一篇记录"),
-        ("home_protocol_title_en", "Cross the Frontier\nToward the Next Record"),
-        ("home_protocol_description_zh", "所有内容节点均已连接。选择一条路径，继续探索技术与生活的边界。"),
-        ("home_protocol_description_en", "All content nodes are connected. Choose a path and continue beyond the frontier."),
+        (
+            "home_protocol_title_en",
+            "Cross the Frontier\nToward the Next Record",
+        ),
+        (
+            "home_protocol_description_zh",
+            "所有内容节点均已连接。选择一条路径，继续探索技术与生活的边界。",
+        ),
+        (
+            "home_protocol_description_en",
+            "All content nodes are connected. Choose a path and continue beyond the frontier.",
+        ),
         ("author", "Salted"),
         ("giscus_repo", ""),
         ("giscus_repo_id", ""),
@@ -145,8 +262,14 @@ async fn seed_settings(db: &sea_orm::DatabaseConnection) -> anyhow::Result<()> {
         ("social_github", ""),
         ("social_email", ""),
         ("icp", ""),
-        ("about_zh", "# 关于我\n\n这里还没有内容，请在后台「站点设置」中编辑。"),
-        ("about_en", "# About\n\nNothing here yet. Edit it in admin settings."),
+        (
+            "about_zh",
+            "# 关于我\n\n这里还没有内容，请在后台「站点设置」中编辑。",
+        ),
+        (
+            "about_en",
+            "# About\n\nNothing here yet. Edit it in admin settings.",
+        ),
         // ---- AI 情报聚合（news_ 前缀不进公开接口）----
         ("news_enabled", "false"),
         ("news_fetch_interval_hours", "2"),

@@ -7,8 +7,8 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -176,9 +176,13 @@ async fn prepare(state: &AppState, input: &PostInput) -> ApiResult<PreparedPost>
             .collect()
     };
     let tag_refs: Vec<&str> = tag_names.iter().map(|s| s.as_str()).collect();
-    let content =
-        prepare_post_content(&state.jieba, input.title.as_str(), &tag_refs, &input.content_md)
-            .map_err(|e| ApiError::internal(e.to_string()))?;
+    let content = prepare_post_content(
+        &state.jieba,
+        input.title.as_str(),
+        &tag_refs,
+        &input.content_md,
+    )
+    .map_err(|e| ApiError::internal(e.to_string()))?;
 
     Ok(PreparedPost {
         slug,
@@ -200,7 +204,11 @@ async fn slug_conflict(
     if let Some(id) = exclude_id {
         cond = cond.add(posts::Column::Id.ne(id));
     }
-    Ok(posts::Entity::find().filter(cond).count(&state.db()).await? > 0)
+    Ok(posts::Entity::find()
+        .filter(cond)
+        .count(&state.db())
+        .await?
+        > 0)
 }
 
 async fn replace_tags(state: &AppState, post_id: i32, tag_ids: &[i32]) -> ApiResult<()> {
@@ -227,7 +235,10 @@ async fn create_post(
     if slug_conflict(&state, &input.lang, &prepared.slug, None).await? {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
-            format!("slug '{}' already exists for lang {}", prepared.slug, input.lang),
+            format!(
+                "slug '{}' already exists for lang {}",
+                prepared.slug, input.lang
+            ),
         ));
     }
 
@@ -268,7 +279,10 @@ async fn create_post(
     let post = model.insert(&state.db()).await?;
     replace_tags(&state, post.id, &input.tag_ids).await?;
 
-    Ok((StatusCode::CREATED, Json(json!({ "id": post.id, "slug": post.slug }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "id": post.id, "slug": post.slug })),
+    ))
 }
 
 async fn update_post(
@@ -285,7 +299,10 @@ async fn update_post(
     if slug_conflict(&state, &input.lang, &prepared.slug, Some(id)).await? {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
-            format!("slug '{}' already exists for lang {}", prepared.slug, input.lang),
+            format!(
+                "slug '{}' already exists for lang {}",
+                prepared.slug, input.lang
+            ),
         ));
     }
 

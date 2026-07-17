@@ -9,10 +9,12 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
+async-stream = "0.3"
+futures-util = "=0.3.31"
 axum = { version = "0.8", features = ["multipart", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tower = "0.5"
-tower-http = { version = "0.7", features = ["fs", "trace", "limit"] }
+tower-http = { version = "0.7", features = ["fs", "trace", "limit", "timeout"] }
 sea-orm = { version = "1", features = [
     "sqlx-sqlite",
     "sqlx-postgres",
@@ -33,7 +35,15 @@ sha2 = "0.10"
 hex = "0.4"
 dotenvy = "0.15"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+base64 = "0.22"
+aes-gcm = "0.10"
+hmac = "0.12"
+sha1 = "0.10"
+data-encoding = "2"
+ipnet = "2"
+ammonia = "4"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "avif"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 walkdir = "2"
 fs2 = "0.4"

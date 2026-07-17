@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
+use axum::extract::{DefaultBodyLimit, Extension, Multipart, Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -12,12 +12,15 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 use uuid::Uuid;
 
+use crate::auth::{require_step_up, AdminContext};
 use crate::backup;
 use crate::error::{ApiError, ApiResult};
 use crate::state::{AppState, BackupJobStatus};
 
 pub fn router(backup_upload_max_mb: usize) -> Router<AppState> {
-    let upload_limit = backup_upload_max_mb.saturating_mul(1024 * 1024).max(1024 * 1024);
+    let upload_limit = backup_upload_max_mb
+        .saturating_mul(1024 * 1024)
+        .max(1024 * 1024);
     Router::new()
         .route("/backups", get(list_backups).post(create_backup_job))
         .route(
@@ -113,8 +116,10 @@ async fn create_backup_job(State(state): State<AppState>) -> ApiResult<impl Into
 
 async fn restore_backup_job(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AdminContext>,
     Path(name): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
+    require_step_up(&ctx)?;
     if !backup::is_valid_backup_name(&name) {
         return Err(ApiError::bad_request("invalid backup filename"));
     }
@@ -141,15 +146,13 @@ async fn restore_backup_job(
 
 async fn upload_backup(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AdminContext>,
     mut multipart: Multipart,
 ) -> ApiResult<impl IntoResponse> {
+    require_step_up(&ctx)?;
     let lock = state.backup_lock.try_lock();
-    let _guard = lock.map_err(|_| {
-        ApiError::new(
-            StatusCode::CONFLICT,
-            "已有备份或恢复任务进行中，请稍后再试",
-        )
-    })?;
+    let _guard = lock
+        .map_err(|_| ApiError::new(StatusCode::CONFLICT, "已有备份或恢复任务进行中，请稍后再试"))?;
 
     let mut saved: Option<PathBuf> = None;
     let mut total: usize = 0;
@@ -207,8 +210,10 @@ async fn upload_backup(
 
 async fn download_backup(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AdminContext>,
     Path(name): Path<String>,
 ) -> ApiResult<Response> {
+    require_step_up(&ctx)?;
     let path = backup::backup_path(&state.cfg, &name)?;
     if !path.exists() {
         return Err(ApiError::not_found());
@@ -229,8 +234,10 @@ async fn download_backup(
 
 async fn delete_backup(
     State(state): State<AppState>,
+    Extension(ctx): Extension<AdminContext>,
     Path(name): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
+    require_step_up(&ctx)?;
     backup::delete_backup(&state.cfg, &name)?;
     Ok(StatusCode::NO_CONTENT)
 }

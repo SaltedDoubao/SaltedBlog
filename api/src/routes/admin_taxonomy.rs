@@ -50,7 +50,9 @@ fn resolve_slug(input: &TaxonomyInput) -> ApiResult<String> {
         slug = sanitize_slug(&input.name_en);
     }
     if slug.is_empty() {
-        return Err(ApiError::bad_request("slug required (name_en not sluggable)"));
+        return Err(ApiError::bad_request(
+            "slug required (name_en not sluggable)",
+        ));
     }
     Ok(slug)
 }
@@ -130,11 +132,16 @@ async fn delete_category(
 ) -> ApiResult<impl IntoResponse> {
     // 解除文章引用
     posts::Entity::update_many()
-        .col_expr(posts::Column::CategoryId, sea_orm::sea_query::Expr::value(sea_orm::Value::Int(None)))
+        .col_expr(
+            posts::Column::CategoryId,
+            sea_orm::sea_query::Expr::value(sea_orm::Value::Int(None)),
+        )
         .filter(posts::Column::CategoryId.eq(id))
         .exec(&state.db())
         .await?;
-    categories::Entity::delete_by_id(id).exec(&state.db()).await?;
+    categories::Entity::delete_by_id(id)
+        .exec(&state.db())
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -277,8 +284,14 @@ async fn delete_series(
     Path(id): Path<i32>,
 ) -> ApiResult<impl IntoResponse> {
     posts::Entity::update_many()
-        .col_expr(posts::Column::SeriesId, sea_orm::sea_query::Expr::value(sea_orm::Value::Int(None)))
-        .col_expr(posts::Column::SeriesOrder, sea_orm::sea_query::Expr::value(sea_orm::Value::Int(None)))
+        .col_expr(
+            posts::Column::SeriesId,
+            sea_orm::sea_query::Expr::value(sea_orm::Value::Int(None)),
+        )
+        .col_expr(
+            posts::Column::SeriesOrder,
+            sea_orm::sea_query::Expr::value(sea_orm::Value::Int(None)),
+        )
         .filter(posts::Column::SeriesId.eq(id))
         .exec(&state.db())
         .await?;

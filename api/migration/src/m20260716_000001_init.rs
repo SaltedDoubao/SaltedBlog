@@ -18,8 +18,17 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Users::Username).string_len(64).not_null().unique_key())
-                    .col(ColumnDef::new(Users::PasswordHash).string_len(256).not_null())
+                    .col(
+                        ColumnDef::new(Users::Username)
+                            .string_len(64)
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(Users::PasswordHash)
+                            .string_len(256)
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(Users::CreatedAt)
                             .timestamp_with_time_zone()
@@ -34,7 +43,12 @@ impl MigrationTrait for Migration {
             .create_table(
                 Table::create()
                     .table(Sessions::Table)
-                    .col(ColumnDef::new(Sessions::Id).string_len(64).not_null().primary_key())
+                    .col(
+                        ColumnDef::new(Sessions::Id)
+                            .string_len(64)
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(Sessions::UserId).integer().not_null())
                     .col(
                         ColumnDef::new(Sessions::ExpiresAt)
@@ -71,10 +85,28 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Categories::Slug).string_len(128).not_null().unique_key())
-                    .col(ColumnDef::new(Categories::NameZh).string_len(128).not_null())
-                    .col(ColumnDef::new(Categories::NameEn).string_len(128).not_null())
-                    .col(ColumnDef::new(Categories::SortOrder).integer().not_null().default(0))
+                    .col(
+                        ColumnDef::new(Categories::Slug)
+                            .string_len(128)
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(Categories::NameZh)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Categories::NameEn)
+                            .string_len(128)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Categories::SortOrder)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
                     .col(
                         ColumnDef::new(Categories::CreatedAt)
                             .timestamp_with_time_zone()
@@ -96,7 +128,12 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Tags::Slug).string_len(128).not_null().unique_key())
+                    .col(
+                        ColumnDef::new(Tags::Slug)
+                            .string_len(128)
+                            .not_null()
+                            .unique_key(),
+                    )
                     .col(ColumnDef::new(Tags::NameZh).string_len(128).not_null())
                     .col(ColumnDef::new(Tags::NameEn).string_len(128).not_null())
                     .col(
@@ -120,7 +157,12 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Series::Slug).string_len(128).not_null().unique_key())
+                    .col(
+                        ColumnDef::new(Series::Slug)
+                            .string_len(128)
+                            .not_null()
+                            .unique_key(),
+                    )
                     .col(ColumnDef::new(Series::NameZh).string_len(128).not_null())
                     .col(ColumnDef::new(Series::NameEn).string_len(128).not_null())
                     .col(ColumnDef::new(Series::DescriptionZh).text())
@@ -160,7 +202,12 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Posts::CategoryId).integer())
                     .col(ColumnDef::new(Posts::SeriesId).integer())
                     .col(ColumnDef::new(Posts::SeriesOrder).integer())
-                    .col(ColumnDef::new(Posts::ViewCount).integer().not_null().default(0))
+                    .col(
+                        ColumnDef::new(Posts::ViewCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
                     .col(
                         ColumnDef::new(Posts::CreatedAt)
                             .timestamp_with_time_zone()
@@ -232,11 +279,7 @@ impl MigrationTrait for Migration {
                     .table(PostTags::Table)
                     .col(ColumnDef::new(PostTags::PostId).integer().not_null())
                     .col(ColumnDef::new(PostTags::TagId).integer().not_null())
-                    .primary_key(
-                        Index::create()
-                            .col(PostTags::PostId)
-                            .col(PostTags::TagId),
-                    )
+                    .primary_key(Index::create().col(PostTags::PostId).col(PostTags::TagId))
                     .to_owned(),
             )
             .await?;
@@ -266,7 +309,12 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Friends::Url).string_len(500).not_null())
                     .col(ColumnDef::new(Friends::Avatar).string_len(500))
                     .col(ColumnDef::new(Friends::Description).text())
-                    .col(ColumnDef::new(Friends::SortOrder).integer().not_null().default(0))
+                    .col(
+                        ColumnDef::new(Friends::SortOrder)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
                     .col(
                         ColumnDef::new(Friends::CreatedAt)
                             .timestamp_with_time_zone()
@@ -281,7 +329,12 @@ impl MigrationTrait for Migration {
             .create_table(
                 Table::create()
                     .table(Settings::Table)
-                    .col(ColumnDef::new(Settings::Key).string_len(128).not_null().primary_key())
+                    .col(
+                        ColumnDef::new(Settings::Key)
+                            .string_len(128)
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(Settings::Value).text().not_null())
                     .to_owned(),
             )
@@ -301,7 +354,11 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(PageViews::Path).string_len(500).not_null())
                     .col(ColumnDef::new(PageViews::Referrer).string_len(500))
-                    .col(ColumnDef::new(PageViews::VisitorHash).string_len(64).not_null())
+                    .col(
+                        ColumnDef::new(PageViews::VisitorHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(PageViews::Date).string_len(10).not_null())
                     .col(
                         ColumnDef::new(PageViews::CreatedAt)
@@ -344,7 +401,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Uploads::Path).string_len(500).not_null())
-                    .col(ColumnDef::new(Uploads::OriginalName).string_len(300).not_null())
+                    .col(
+                        ColumnDef::new(Uploads::OriginalName)
+                            .string_len(300)
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(Uploads::Mime).string_len(100).not_null())
                     .col(ColumnDef::new(Uploads::SizeBytes).big_integer().not_null())
                     .col(

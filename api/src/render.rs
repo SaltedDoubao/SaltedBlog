@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use comrak::nodes::NodeValue;
 use comrak::{format_html, parse_document, Anchorizer, Arena, Options};
 use jieba_rs::Jieba;
@@ -27,6 +29,19 @@ fn make_options() -> Options<'static> {
     // 单管理员撰写的内容视为可信，允许内嵌原始 HTML
     opts.render.r#unsafe = true;
     opts
+}
+
+fn sanitize_rendered_html(html: &str) -> String {
+    let extra_tags: HashSet<&str> = ["details", "summary", "figure", "figcaption", "mark"]
+        .into_iter()
+        .collect();
+    let generic: HashSet<&str> = ["class", "id", "title", "aria-label"].into_iter().collect();
+    let mut builder = ammonia::Builder::default();
+    builder
+        .add_tags(&extra_tags)
+        .add_generic_attributes(&generic);
+    let cleaned = builder.clean(html).to_string();
+    cleaned
 }
 
 /// 渲染 Markdown 为 HTML，同时提取 TOC（h2-h4）与纯文本
@@ -71,6 +86,7 @@ pub fn render_markdown(md: &str) -> Rendered {
     let mut html = String::new();
     format_html(root, &opts, &mut html).expect("format_html should not fail");
 
+    let html = sanitize_rendered_html(&html);
     Rendered { html, toc, plain }
 }
 
@@ -142,4 +158,24 @@ pub fn sanitize_slug(input: &str) -> String {
         out.pop();
     }
     out
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+
+    #[test]
+    fn strips_active_html() {
+        let rendered =
+            render_markdown("<script>alert(1)</script><img src=x onerror=alert(1)><p>safe</p>");
+        assert!(!rendered.html.contains("script"));
+        assert!(!rendered.html.contains("onerror"));
+        assert!(rendered.html.contains("safe"));
+    }
+
+    #[test]
+    fn strips_dangerous_links() {
+        let rendered = render_markdown("[x](javascript:alert(1))");
+        assert!(!rendered.html.contains("javascript:"));
+    }
 }

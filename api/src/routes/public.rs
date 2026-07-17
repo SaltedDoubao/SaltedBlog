@@ -8,8 +8,7 @@ use axum::{routing::get, routing::post, Json, Router};
 use chrono::{FixedOffset, Utc};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    Set,
+    ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -215,7 +214,10 @@ async fn post_detail(
 
     let content_html = post.content_html.clone();
     let hydrated = hydrate_posts(&state.db(), vec![post]).await?;
-    let item = hydrated.into_iter().next().ok_or_else(ApiError::not_found)?;
+    let item = hydrated
+        .into_iter()
+        .next()
+        .ok_or_else(ApiError::not_found)?;
 
     Ok(Json(json!({
         "post": item,
@@ -534,7 +536,7 @@ async fn track(
         return Ok(StatusCode::NO_CONTENT);
     }
 
-    let ip = crate::auth::client_ip(&headers, Some(&addr));
+    let ip = crate::auth::client_ip(&headers, Some(&addr), &state.cfg);
     let ua = headers
         .get("user-agent")
         .and_then(|v| v.to_str().ok())

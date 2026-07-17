@@ -76,8 +76,17 @@ async fn maybe_digest(
     let offset = FixedOffset::east_opt(state.cfg.stats_tz_offset_hours * 3600)
         .unwrap_or_else(|| FixedOffset::east_opt(0).expect("utc offset"));
     let now_local = Utc::now().with_timezone(&offset);
-    let minutes_of_day = now_local.format("%H").to_string().parse::<u32>().unwrap_or(0) * 60
-        + now_local.format("%M").to_string().parse::<u32>().unwrap_or(0);
+    let minutes_of_day = now_local
+        .format("%H")
+        .to_string()
+        .parse::<u32>()
+        .unwrap_or(0)
+        * 60
+        + now_local
+            .format("%M")
+            .to_string()
+            .parse::<u32>()
+            .unwrap_or(0);
     let due_at = settings.digest_hour * 60 + settings.digest_minute;
     if minutes_of_day < due_at {
         return Ok(());

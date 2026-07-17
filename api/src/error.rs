@@ -9,13 +9,25 @@ use serde_json::json;
 pub struct ApiError {
     pub status: StatusCode,
     pub message: String,
+    pub code: &'static str,
+    pub private_detail: Option<String>,
 }
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.private_detail.as_deref().unwrap_or(&self.message))
+    }
+}
+
+impl std::error::Error for ApiError {}
 
 impl ApiError {
     pub fn new(status: StatusCode, message: impl Into<String>) -> Self {
         Self {
             status,
             message: message.into(),
+            code: "request_error",
+            private_detail: None,
         }
     }
 
@@ -32,16 +44,37 @@ impl ApiError {
     }
 
     pub fn internal(message: impl Into<String>) -> Self {
-        Self::new(StatusCode::INTERNAL_SERVER_ERROR, message)
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "internal server error".into(),
+            code: "internal_error",
+            private_detail: Some(message.into()),
+        }
+    }
+
+    pub fn forbidden(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            message: message.into(),
+            code,
+            private_detail: None,
+        }
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         if self.status.is_server_error() {
-            tracing::error!("api error: {}", self.message);
+            tracing::error!(
+                "api error: {}",
+                self.private_detail.as_deref().unwrap_or(&self.message)
+            );
         }
-        (self.status, Json(json!({ "error": self.message }))).into_response()
+        (
+            self.status,
+            Json(json!({ "error": self.message, "code": self.code })),
+        )
+            .into_response()
     }
 }
 

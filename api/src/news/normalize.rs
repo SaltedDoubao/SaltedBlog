@@ -3,8 +3,16 @@ use sha2::{Digest, Sha256};
 
 /// 常见跟踪参数（完整匹配，utm_ 为前缀匹配）
 const TRACKING_PARAMS: &[&str] = &[
-    "gclid", "fbclid", "yclid", "igshid", "spm", "ref_src", "mc_cid", "mc_eid",
-    "share_token", "utm",
+    "gclid",
+    "fbclid",
+    "yclid",
+    "igshid",
+    "spm",
+    "ref_src",
+    "mc_cid",
+    "mc_eid",
+    "share_token",
+    "utm",
 ];
 
 fn is_tracking_param(name: &str) -> bool {
@@ -76,7 +84,11 @@ pub fn content_hash(title: &str, content: Option<&str>, summary: Option<&str>) -
     if body.chars().count() < 40 {
         return None;
     }
-    Some(sha256_hex(&format!("{}\n{}", normalized_title(title), body)))
+    Some(sha256_hex(&format!(
+        "{}\n{}",
+        normalized_title(title),
+        body
+    )))
 }
 
 pub struct Fingerprint {
@@ -210,10 +222,9 @@ mod tests {
 
     #[test]
     fn canonical_url_strips_tracking_and_sorts() {
-        let url = canonical_url(
-            "https://Example.com/Post/1?utm_source=x&b=2&a=1&fbclid=abc#section",
-        )
-        .unwrap();
+        let url =
+            canonical_url("https://Example.com/Post/1?utm_source=x&b=2&a=1&fbclid=abc#section")
+                .unwrap();
         assert_eq!(url, "https://example.com/Post/1?a=1&b=2");
     }
 
@@ -230,7 +241,10 @@ mod tests {
             canonical_url("https://example.com/a/b/").unwrap(),
             "https://example.com/a/b"
         );
-        assert_eq!(canonical_url("https://example.com/").unwrap(), "https://example.com/");
+        assert_eq!(
+            canonical_url("https://example.com/").unwrap(),
+            "https://example.com/"
+        );
     }
 
     #[test]
@@ -260,7 +274,11 @@ mod tests {
         let long = "x".repeat(50);
         assert!(content_hash("t", Some(&long), None).is_some());
         // 正文优先于摘要
-        let h1 = content_hash("t", Some(&long), Some("another summary that is long enough ......"));
+        let h1 = content_hash(
+            "t",
+            Some(&long),
+            Some("another summary that is long enough ......"),
+        );
         let h2 = content_hash("t", Some(&long), None);
         assert_eq!(h1, h2);
     }

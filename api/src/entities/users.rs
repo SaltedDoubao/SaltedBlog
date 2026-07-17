@@ -10,6 +10,11 @@ pub struct Model {
     #[serde(skip_serializing)]
     pub password_hash: String,
     pub created_at: DateTimeWithTimeZone,
+    #[serde(skip_serializing)]
+    pub mfa_secret_enc: Option<String>,
+    pub mfa_enabled_at: Option<DateTimeWithTimeZone>,
+    pub last_totp_step: Option<i64>,
+    pub password_changed_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

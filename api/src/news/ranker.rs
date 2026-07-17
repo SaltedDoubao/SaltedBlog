@@ -40,7 +40,11 @@ fn source_score(weight: f64) -> f64 {
 }
 
 /// freshness 维（上限 25）：按小时档衰减
-fn freshness_score(published_at: Option<DateTime<Utc>>, fetched_at: DateTime<Utc>, now: DateTime<Utc>) -> f64 {
+fn freshness_score(
+    published_at: Option<DateTime<Utc>>,
+    fetched_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> f64 {
     let base = published_at.unwrap_or(fetched_at);
     let hours = (now - base).num_minutes() as f64 / 60.0;
     if hours <= 3.0 {
@@ -81,10 +85,18 @@ fn popularity_score(extra_json: Option<&str>) -> f64 {
 /// quality 维（上限 10）：摘要/正文/作者/时间/链接完整度各 2 分
 fn quality_score(item: &news_items::Model) -> f64 {
     let mut score = 0.0;
-    if item.summary.as_deref().is_some_and(|s| s.chars().count() >= 20) {
+    if item
+        .summary
+        .as_deref()
+        .is_some_and(|s| s.chars().count() >= 20)
+    {
         score += 2.0;
     }
-    if item.content.as_deref().is_some_and(|s| !s.trim().is_empty()) {
+    if item
+        .content
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty())
+    {
         score += 2.0;
     }
     if item.author.as_deref().is_some_and(|s| !s.trim().is_empty()) {
@@ -239,7 +251,10 @@ pub fn select_quota(entries: &[RankEntry], active_source_count: usize) -> Vec<i3
 
     // 阶段 2：剩余名额按 weight 最大余数法分配目标 k_i
     let remaining = effective.saturating_sub(state.selected.len());
-    let total_weight: f64 = active_with_candidates.iter().map(|s| source_weight(*s)).sum();
+    let total_weight: f64 = active_with_candidates
+        .iter()
+        .map(|s| source_weight(*s))
+        .sum();
     let mut quota: std::collections::HashMap<i32, usize> = std::collections::HashMap::new();
     if remaining > 0 {
         let mut shares: Vec<(i32, f64)> = active_with_candidates
@@ -468,7 +483,10 @@ mod tests {
             .collect();
         entries.push(entry(1000, 2, "b", 0.1, 1.0));
         let picked = select_quota(&entries, 2);
-        assert!(picked.contains(&1000), "low-weight source must keep coverage");
+        assert!(
+            picked.contains(&1000),
+            "low-weight source must keep coverage"
+        );
     }
 
     #[test]
@@ -497,10 +515,17 @@ mod tests {
         let picked = select_quota(&entries, 2);
         let cap = category_cap(pool_size(2));
         assert!(picked.len() <= 2 * cap);
-        assert!(picked.len() >= 30, "expect a reasonably full pool, got {}", picked.len());
+        assert!(
+            picked.len() >= 30,
+            "expect a reasonably full pool, got {}",
+            picked.len()
+        );
         let source1 = picked.iter().filter(|id| **id < 60).count();
         let source2 = picked.len() - source1;
-        assert!(source1 > source2, "higher weight should win: {source1} vs {source2}");
+        assert!(
+            source1 > source2,
+            "higher weight should win: {source1} vs {source2}"
+        );
         assert_eq!(source1, cap); // 高权重源打满分类上限
     }
 
