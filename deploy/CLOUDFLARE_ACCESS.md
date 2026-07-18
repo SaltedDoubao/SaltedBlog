@@ -223,7 +223,12 @@ sudo docker compose \
 sudo docker compose \
   -f docker-compose.yml \
   -f docker-compose.cloudflare.yml \
-  up -d --build
+  pull
+
+sudo docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.cloudflare.yml \
+  up -d --no-build
 
 sudo docker compose \
   -f docker-compose.yml \
@@ -290,11 +295,14 @@ cd /opt/SaltedBlog
 git fetch --all --tags
 git checkout <新的已验证-tag-或-commit>
 cd deploy
-sudo docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml up -d --build
+# 修改 deploy/.env 中的 SALTEDBLOG_IMAGE_TAG，使其与已发布的 v* 标签一致
+sudo docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml pull
+sudo docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml up -d --no-build
 sudo docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml ps
 ```
 
 更新前先在后台 `/admin/backup` 生成并下载一份备份。升级后检查迁移日志、公开首页、后台登录和定时任务。
+回滚时把 `SALTEDBLOG_IMAGE_TAG` 改回上一版本或 `sha-<完整提交 SHA>`，再次执行 pull/up。
 
 为了避免每次重复 `-f`，可以创建仅用于当前 shell 的别名：
 

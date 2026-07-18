@@ -14,13 +14,20 @@
 cd deploy
 mkdir -p secrets
 # 按 secrets/README.md 创建全部 secret 文件
+# 在 .env 中将 SALTEDBLOG_IMAGE_TAG 固定为已发布的 v* 标签
 docker compose config
-docker compose up -d --build
+docker compose pull
+docker compose up -d --no-build
 ```
 
 `db-init` 会幂等创建 `salted_owner` 与 `salted_app`；`migrate` 使用 owner 角色执行 DDL，API
-仅使用运行时角色。升级时仍执行 `docker compose up -d --build`，API 会在迁移任务完成后启动。
+仅使用运行时角色。升级前生成备份，修改 `SALTEDBLOG_IMAGE_TAG` 后执行
+`docker compose pull && docker compose up -d --no-build`，API 会在迁移任务完成后启动。回滚时使用上一
+版本标签或 `sha-<完整提交 SHA>`。只有开发或应急构建才使用 `docker compose up -d --build`。
 上传和备份共用 `app_data` 卷，以保证恢复时可在同一文件系统内旁路解压并原子切换上传目录。
+
+镜像仅由仓库 `v*` 标签触发的 GitHub Actions 发布。首次发布后，在 GitHub Packages 中将
+`saltedblog-api`、`saltedblog-web`、`saltedblog-caddy` 设为 public；否则 VPS 需要使用只读 PAT 登录 GHCR。
 
 首次登录必须在 5 分钟内完成 TOTP 绑定并离线保存 10 个恢复码。丢失第二因子时在服务器执行：
 
