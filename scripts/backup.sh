@@ -5,8 +5,11 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 if command -v docker >/dev/null 2>&1 && [ -f "$ROOT_DIR/deploy/docker-compose.yml" ]; then
-  cd "$ROOT_DIR/deploy"
-  exec docker compose exec -T api salted-api backup
+  exec docker compose \
+    --project-directory "$ROOT_DIR/deploy" \
+    --env-file "$ROOT_DIR/deploy/.env" \
+    -f "$ROOT_DIR/deploy/docker-compose.yml" \
+    exec -T api salted-api backup
 fi
 
 cd "$ROOT_DIR/api"

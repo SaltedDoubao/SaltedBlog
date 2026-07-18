@@ -11,19 +11,22 @@
 ## 首次部署与升级
 
 ```bash
-cd deploy
-mkdir -p secrets
-# 按 secrets/README.md 创建全部 secret 文件
-# 在 .env 中将 SALTEDBLOG_IMAGE_TAG 固定为已发布的 v* 标签
-docker compose config
-docker compose pull
-docker compose up -d --no-build
+# 以下命令均从仓库根目录执行
+mkdir -p deploy/secrets
+# 按 deploy/secrets/README.md 创建全部 secret 文件
+# 在 deploy/.env 中将 SALTEDBLOG_IMAGE_TAG 固定为已发布的 v* 标签
+docker compose --project-directory ./deploy --env-file ./deploy/.env \
+  -f ./deploy/docker-compose.yml config --quiet
+docker compose --project-directory ./deploy --env-file ./deploy/.env \
+  -f ./deploy/docker-compose.yml pull
+docker compose --project-directory ./deploy --env-file ./deploy/.env \
+  -f ./deploy/docker-compose.yml up -d --no-build
 ```
 
 `db-init` 会幂等创建 `salted_owner` 与 `salted_app`；`migrate` 使用 owner 角色执行 DDL，API
 仅使用运行时角色。升级前生成备份，修改 `SALTEDBLOG_IMAGE_TAG` 后执行
-`docker compose pull && docker compose up -d --no-build`，API 会在迁移任务完成后启动。回滚时使用上一
-版本标签或 `sha-<完整提交 SHA>`。只有开发或应急构建才使用 `docker compose up -d --build`。
+显式入口的 `pull` 与 `up -d --no-build` 命令，API 会在迁移任务完成后启动。回滚时使用上一版本标签或
+`sha-<完整提交 SHA>`。只有开发或应急构建才将最后一条命令改为 `up -d --build`。
 上传和备份共用 `app_data` 卷，以保证恢复时可在同一文件系统内旁路解压并原子切换上传目录。
 
 镜像仅由仓库 `v*` 标签触发的 GitHub Actions 发布。首次发布后，在 GitHub Packages 中将
@@ -32,7 +35,8 @@ docker compose up -d --no-build
 首次登录必须在 5 分钟内完成 TOTP 绑定并离线保存 10 个恢复码。丢失第二因子时在服务器执行：
 
 ```bash
-docker compose run --rm migrate salted-api reset-mfa admin
+docker compose --project-directory ./deploy --env-file ./deploy/.env \
+  -f ./deploy/docker-compose.yml run --rm migrate salted-api reset-mfa admin
 ```
 
 ## 旧数据兼容

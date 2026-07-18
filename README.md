@@ -52,7 +52,7 @@ SaltedBlog/
 │       ├── routes/       # public / auth / admin 路由
 │       ├── auth.rs       # argon2、Session、登录限流、守卫中间件
 │       └── render.rs     # comrak 渲染 + TOC 提取 + jieba 分词
-├── deploy/               # Dockerfile.api / Dockerfile.web / docker-compose.yml / Caddyfile
+├── deploy/               # Dockerfile / Compose / Caddyfile / 部署 .env.example
 ├── scripts/backup.sh     # 备份脚本（与后台同格式 zip）
 ├── data/                 # 运行时数据（gitignore）：blog.db、uploads/
 ├── backups/              # 备份 zip（gitignore）
@@ -86,17 +86,21 @@ npm run dev
 服务器要求：Docker 24+，域名已解析到服务器（Caddy 自动申请 HTTPS 证书）。
 
 ```bash
-git clone <repo> /opt/SaltedBlog && cd /opt/SaltedBlog/deploy
-cp ../.env.example .env
+git clone <repo> /opt/SaltedBlog && cd /opt/SaltedBlog
+cp deploy/.env.example deploy/.env
 # 按 deploy/secrets/README.md 创建生产密钥，并配置域名、CIDR 与已发布版本
 # SALTEDBLOG_IMAGE_TAG=v0.1.0
-docker compose pull
-docker compose up -d --no-build
+docker compose --project-directory ./deploy --env-file ./deploy/.env \
+  -f ./deploy/docker-compose.yml config --quiet
+docker compose --project-directory ./deploy --env-file ./deploy/.env \
+  -f ./deploy/docker-compose.yml pull
+docker compose --project-directory ./deploy --env-file ./deploy/.env \
+  -f ./deploy/docker-compose.yml up -d --no-build
 ```
 
-更新时先生成备份，再修改 `SALTEDBLOG_IMAGE_TAG`，执行 `docker compose pull && docker compose up -d --no-build`。
-回滚时将标签改回上一版本或 `sha-<完整提交 SHA>`。开发及应急场景仍可执行
-`docker compose up -d --build` 在本机生成镜像。
+所有 Docker Compose 命令均从仓库根目录执行，并显式指定 `deploy/.env`，因此不会读取本地开发使用的根目录 `.env`。
+更新时先生成备份，再修改 `SALTEDBLOG_IMAGE_TAG`，重新执行上述 `pull` 与 `up` 命令。
+回滚时将标签改回上一版本或 `sha-<完整提交 SHA>`。开发及应急场景仍可将最后一条命令改为 `up -d --build`。
 
 推送 `v*` Git 标签后，GitHub Actions 会在测试通过后发布 `linux/amd64` 的 API、Web、Caddy
 镜像到 GHCR。首次发布后，需要在 GitHub Packages 中将三个容器包设为 public，VPS 才能免登录拉取。
@@ -144,9 +148,9 @@ uploads/
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 首次启动引导创建的管理员 | admin / 空 |
 | `API_URL` | Web SSR 访问 API 的内部地址 | `http://127.0.0.1:8787` |
 | `PUBLIC_SITE_URL` | 站点对外地址（canonical / RSS / sitemap） | `http://localhost:4321` |
-| `SALTEDBLOG_IMAGE_TAG` | GHCR 镜像版本标签 | `latest` |
-| `SITE_DOMAIN` | 域名（仅 Docker，供 Caddy 使用） | — |
-| `ADMIN_DOMAIN` / `ADMIN_ORIGIN` | VPN 管理域名与唯一合法 Origin | — |
+| `SALTEDBLOG_IMAGE_TAG` | GHCR 镜像版本标签（仅 Docker） | 由 `deploy/.env` 指定 |
+| `SITE_DOMAIN` | 域名（仅 Docker，供 Caddy 使用） | 由 `deploy/.env` 指定 |
+| `ADMIN_DOMAIN` / `ADMIN_ORIGIN` | VPN 管理域名与唯一合法 Origin | Docker 由 `deploy/.env` 指定 |
 | `UPLOAD_MAX_MB` | 上传大小上限 | 20 |
 | `BACKUP_DIR` | 备份目录 | `backups` |
 | `BACKUP_KEEP` | 自动保留最近 N 份备份 | 7 |
