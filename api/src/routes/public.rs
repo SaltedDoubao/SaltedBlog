@@ -6,7 +6,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::{routing::get, routing::post, Json, Router};
 use chrono::{FixedOffset, Utc};
-use sea_orm::sea_query::Expr;
+use sea_orm::sea_query::{Expr, LikeExpr};
 use sea_orm::{
     ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
@@ -22,6 +22,68 @@ use crate::news::llm::DigestDoc;
 use crate::render::{render_markdown, tokenize_query};
 use crate::routes::dto::{hydrate_posts, validate_lang, CategoryOut, SeriesOut, TagOut};
 use crate::state::AppState;
+
+const MAX_PAGE: u64 = 10_000;
+const MAX_SEARCH_CHARS: usize = 100;
+const MAX_SLUG_CHARS: usize = 120;
+const INVALID_SEARCH_QUERY: &str = "invalid_search_query";
+const INVALID_PAGINATION: &str = "invalid_pagination";
+
+fn is_valid_public_slug(value: &str) -> bool {
+    if value.is_empty() || value.len() > MAX_SLUG_CHARS {
+        return false;
+    }
+    let bytes = value.as_bytes();
+    let is_slug_alphanumeric = |byte: &u8| byte.is_ascii_lowercase() || byte.is_ascii_digit();
+    if !bytes.first().is_some_and(is_slug_alphanumeric)
+        || !bytes.last().is_some_and(is_slug_alphanumeric)
+    {
+        return false;
+    }
+    let mut previous_dash = false;
+    for byte in bytes {
+        if byte.is_ascii_lowercase() || byte.is_ascii_digit() {
+            previous_dash = false;
+        } else if *byte == b'-' && !previous_dash {
+            previous_dash = true;
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+fn require_public_slug(value: &str) -> ApiResult<()> {
+    if is_valid_public_slug(value) {
+        Ok(())
+    } else {
+        Err(ApiError::not_found())
+    }
+}
+
+fn validate_search_query(value: Option<String>) -> ApiResult<String> {
+    let value = value.unwrap_or_default().trim().to_string();
+    if value.chars().count() > MAX_SEARCH_CHARS || value.chars().any(char::is_control) {
+        return Err(ApiError::bad_request("搜索关键词格式无效或超过 100 个字符")
+            .with_code(INVALID_SEARCH_QUERY));
+    }
+    Ok(value)
+}
+
+fn escape_like_literal(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if matches!(ch, '\\' | '%' | '_') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
+}
+
+fn contains_literal(column: posts::Column, value: &str) -> sea_orm::sea_query::SimpleExpr {
+    Expr::col(column).like(LikeExpr::new(format!("%{}%", escape_like_literal(value))).escape('\\'))
+}
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -65,12 +127,18 @@ async fn list_posts(
     State(state): State<AppState>,
     Query(q): Query<ListQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1);
+    if !(1..=MAX_PAGE).contains(&page) {
+        return Err(
+            ApiError::bad_request("page must be between 1 and 10000").with_code(INVALID_PAGINATION)
+        );
+    }
     let page_size = q.page_size.unwrap_or(10).clamp(1, 50);
 
     let mut cond = published_filter();
 
     if let Some(cat_slug) = q.category.as_deref().filter(|s| !s.is_empty()) {
+        require_public_slug(cat_slug)?;
         let cat = categories::Entity::find()
             .filter(categories::Column::Slug.eq(cat_slug))
             .one(&state.db())
@@ -80,6 +148,7 @@ async fn list_posts(
     }
 
     if let Some(series_slug) = q.series.as_deref().filter(|s| !s.is_empty()) {
+        require_public_slug(series_slug)?;
         let sr = series::Entity::find()
             .filter(series::Column::Slug.eq(series_slug))
             .one(&state.db())
@@ -89,6 +158,7 @@ async fn list_posts(
     }
 
     if let Some(tag_slug) = q.tag.as_deref().filter(|s| !s.is_empty()) {
+        require_public_slug(tag_slug)?;
         let tag = tags::Entity::find()
             .filter(tags::Column::Slug.eq(tag_slug))
             .one(&state.db())
@@ -130,6 +200,7 @@ async fn post_detail(
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
+    require_public_slug(&slug)?;
     let post = posts::Entity::find()
         .filter(published_filter().add(posts::Column::Slug.eq(slug)))
         .one(&state.db())
@@ -317,20 +388,23 @@ async fn search(
     State(state): State<AppState>,
     Query(query): Query<SearchQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let raw = query.q.unwrap_or_default().trim().to_string();
+    let raw = validate_search_query(query.q)?;
     if raw.is_empty() {
         return Ok(Json(json!({ "items": [], "q": raw })));
     }
 
     let terms = tokenize_query(&state.jieba, &raw);
+    if terms.is_empty() {
+        return Ok(Json(json!({ "items": [], "q": raw })));
+    }
     let mut term_cond = Condition::all();
     for term in &terms {
-        term_cond = term_cond.add(posts::Column::SearchText.contains(term));
+        term_cond = term_cond.add(contains_literal(posts::Column::SearchText, term));
     }
     let cond = published_filter().add(
         Condition::any()
             .add(term_cond)
-            .add(posts::Column::Title.contains(&raw)),
+            .add(contains_literal(posts::Column::Title, &raw)),
     );
 
     let items = posts::Entity::find()
@@ -558,4 +632,64 @@ async fn track(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod public_input_tests {
+    use super::*;
+    use sea_orm::{DatabaseBackend, QueryTrait};
+
+    #[test]
+    fn validates_canonical_public_slugs() {
+        for valid in ["post", "post-1", "abc123", "a-b-c"] {
+            assert!(is_valid_public_slug(valid), "{valid}");
+        }
+        for invalid in [
+            "",
+            "-post",
+            "post-",
+            "post--one",
+            "Post",
+            "中文",
+            "post_name",
+            "../post",
+        ] {
+            assert!(!is_valid_public_slug(invalid), "{invalid}");
+        }
+        assert!(!is_valid_public_slug(&"a".repeat(MAX_SLUG_CHARS + 1)));
+    }
+
+    #[test]
+    fn validates_search_length_and_control_characters() {
+        assert_eq!(
+            validate_search_query(Some("  Rust 中文  ".into())).unwrap(),
+            "Rust 中文"
+        );
+        assert!(validate_search_query(Some("a".repeat(MAX_SEARCH_CHARS))).is_ok());
+        let too_long = validate_search_query(Some("界".repeat(MAX_SEARCH_CHARS + 1))).unwrap_err();
+        assert_eq!(too_long.code, INVALID_SEARCH_QUERY);
+        let control = validate_search_query(Some("hello\nworld".into())).unwrap_err();
+        assert_eq!(control.code, INVALID_SEARCH_QUERY);
+    }
+
+    #[test]
+    fn escapes_like_wildcards_as_literals() {
+        assert_eq!(
+            escape_like_literal(r"100%_safe\\path"),
+            r"100\%\_safe\\\\path"
+        );
+        assert_eq!(escape_like_literal("normal 中文"), "normal 中文");
+    }
+
+    #[test]
+    fn keeps_search_payloads_out_of_generated_sql() {
+        let payload = "' OR 1=1 -- 100%_";
+        let statement = posts::Entity::find()
+            .filter(contains_literal(posts::Column::Title, payload))
+            .build(DatabaseBackend::Postgres);
+        assert!(statement.sql.contains("LIKE"));
+        assert!(statement.sql.contains("ESCAPE"));
+        assert!(!statement.sql.contains(payload));
+        assert!(statement.values.is_some());
+    }
 }

@@ -1,6 +1,12 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import { searchPosts } from '@/lib/api';
+import {
+  isBadRequest,
+  SEARCH_MAX_CHARS,
+  searchPosts,
+  validateSearchQuery,
+  type PostListItem,
+} from '@/lib/api';
 import { formatDate, localName, localePath, t, type Lang } from '@/i18n';
 
 interface Props {
@@ -9,7 +15,19 @@ interface Props {
 
 const { lang } = Astro.props;
 const q = (Astro.url.searchParams.get('q') ?? '').trim();
-const result = q ? await searchPosts(q) : null;
+let result: { items: PostListItem[]; q: string } | null = null;
+let searchError = '';
+if (q) {
+  if (validateSearchQuery(q)) {
+    searchError = t(lang, 'search.invalid');
+  } else {
+    try {
+      result = await searchPosts(q);
+    } catch (err) {
+      searchError = isBadRequest(err) ? t(lang, 'search.invalid') : t(lang, 'search.failed');
+    }
+  }
+}
 ---
 
 <BaseLayout lang={lang} title={t(lang, 'search.title')}>
@@ -28,11 +46,16 @@ const result = q ? await searchPosts(q) : null;
           name="q"
           value={q}
           placeholder={t(lang, 'search.placeholder')}
+          maxlength={SEARCH_MAX_CHARS}
+          aria-describedby={searchError ? 'searchError' : undefined}
+          aria-invalid={searchError ? 'true' : undefined}
           autocomplete="off"
           autofocus
         />
         <button class="btn btn--primary" type="submit">{t(lang, 'nav.search')}</button>
       </form>
+
+      {searchError && <p class="search-error mono" id="searchError" role="alert">{searchError}</p>}
 
       {
         result && (
@@ -84,6 +107,13 @@ const result = q ? await searchPosts(q) : null;
 
   .search-form__input {
     flex: 1;
+  }
+
+  .search-error {
+    max-width: 640px;
+    margin: var(--space-3) 0 0;
+    color: var(--danger);
+    font-size: 11px;
   }
 
   .search-results {

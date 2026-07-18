@@ -157,6 +157,26 @@ export function getPostDetail(slug: string): Promise<PostDetailResponse> {
   return apiFetch(`/api/posts/${encodeURIComponent(slug)}`);
 }
 
+export const SEARCH_MAX_CHARS = 100;
+
+export function validateSearchQuery(q: string): 'invalid' | null {
+  const chars = Array.from(q);
+  if (chars.length > SEARCH_MAX_CHARS) return 'invalid';
+  if (
+    chars.some((char) => {
+      const code = char.codePointAt(0) ?? 0;
+      return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+    })
+  ) {
+    return 'invalid';
+  }
+  return null;
+}
+
+export function isBadRequest(err: unknown): boolean {
+  return err instanceof ApiFetchError && err.status === 400;
+}
+
 export function getArchive(): Promise<{ items: ArchiveItem[] }> {
   return apiFetch('/api/archive');
 }

@@ -2,7 +2,13 @@
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import PostCard from '@/components/PostCard.astro';
 import Pagination from '@/components/Pagination.astro';
-import { getPosts, type SeriesOut, type TagOut, type CategoryOut } from '@/lib/api';
+import {
+  getPosts,
+  type SeriesOut,
+  type TagOut,
+  type CategoryOut,
+  type PostListResponse,
+} from '@/lib/api';
 import { t, localName, localePath, type Lang } from '@/i18n';
 
 interface Props {
@@ -16,8 +22,13 @@ interface Props {
 }
 
 const { lang, filter } = Astro.props;
-const page = Math.max(1, Number(Astro.url.searchParams.get('page')) || 1);
+const pageParam = Astro.url.searchParams.get('page');
+const parsedPage = pageParam === null ? 1 : Number(pageParam);
+const invalidPage =
+  pageParam !== null && (!/^\d+$/.test(pageParam) || !Number.isSafeInteger(parsedPage) || parsedPage < 1 || parsedPage > 10_000);
+const page = invalidPage ? 1 : parsedPage;
 const pageSize = 12;
+if (invalidPage) Astro.response.status = 400;
 
 let filterName = '';
 let filterDescription = '';
@@ -29,13 +40,15 @@ if (filter) {
   }
 }
 
-const postsRes = await getPosts({
-  page,
-  pageSize,
-  category: filter?.type === 'category' ? filter.slug : undefined,
-  tag: filter?.type === 'tag' ? filter.slug : undefined,
-  series: filter?.type === 'series' ? filter.slug : undefined,
-});
+const postsRes: PostListResponse = invalidPage
+  ? { items: [], total: 0, page: 1, page_size: pageSize }
+  : await getPosts({
+      page,
+      pageSize,
+      category: filter?.type === 'category' ? filter.slug : undefined,
+      tag: filter?.type === 'tag' ? filter.slug : undefined,
+      series: filter?.type === 'series' ? filter.slug : undefined,
+    });
 
 const filterTypeLabel = filter ? t(lang, `posts.filter.${filter.type}` as const) : '';
 const heading = filter ? filterName : t(lang, 'posts.title');
@@ -66,7 +79,9 @@ const makeHref = (p: number) => (p <= 1 ? basePath : `${basePath}?page=${p}`);
       </header>
 
       {
-        postsRes.items.length === 0 ? (
+        invalidPage ? (
+          <div class="empty-state mono">INVALID PAGE / {t(lang, 'posts.invalidPage')}</div>
+        ) : postsRes.items.length === 0 ? (
           <div class="empty-state mono">NO SIGNAL / {t(lang, 'posts.empty')}</div>
         ) : (
           <div class="posts-grid">
@@ -81,7 +96,7 @@ const makeHref = (p: number) => (p <= 1 ? basePath : `${basePath}?page=${p}`);
         )
       }
 
-      <Pagination page={page} total={postsRes.total} pageSize={pageSize} makeHref={makeHref} />
+      {!invalidPage && <Pagination page={page} total={postsRes.total} pageSize={pageSize} makeHref={makeHref} />}
     </div>
   </section>
 </BaseLayout>
