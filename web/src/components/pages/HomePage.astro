@@ -412,38 +412,30 @@ const portals = [
     </section>
 
     <section class="world" id="home-world">
-      <div class="world__frame">
+      <div class="world__sticky">
         <div class="world__back" aria-hidden="true"></div>
         <header class="world__header">
           <span class="mono">02 / WORLD DATA</span>
           <h2>{worldTitle}</h2>
           <p>{worldDescription}</p>
         </header>
-        <div
-          class="world__viewport"
-          id="worldViewport"
-          tabindex="0"
-          role="region"
-          aria-label={worldTitle}
-        >
-          <div class="world__track">
-            {portals.map((portal) => (
-              <article class="world-panel">
-                <a class:list={['world-panel__art', portal.className]} href={portal.href} aria-label={portal.title}></a>
-                <div class="world-panel__copy">
-                  <div class="world-panel__no mono">AREA / {portal.id}</div>
-                  <h3>{portal.title}</h3>
-                  <p>{portal.description}</p>
-                  <div class="world-panel__data mono">
-                    {portal.metrics.map(([value, label]) => (
-                      <div><b class="counter" data-value={value}>0</b><span>{label}</span></div>
-                    ))}
-                  </div>
-                  <a class="home-btn home-btn--ghost world-panel__action" href={portal.href}>{ui.open} ↗</a>
+        <div class="world__track" id="worldTrack">
+          {portals.map((portal) => (
+            <article class="world-panel">
+              <a class:list={['world-panel__art', portal.className]} href={portal.href} aria-label={portal.title}></a>
+              <div class="world-panel__copy">
+                <div class="world-panel__no mono">AREA / {portal.id}</div>
+                <h3>{portal.title}</h3>
+                <p>{portal.description}</p>
+                <div class="world-panel__data mono">
+                  {portal.metrics.map(([value, label]) => (
+                    <div><b class="counter" data-value={value}>0</b><span>{label}</span></div>
+                  ))}
                 </div>
-              </article>
-            ))}
-          </div>
+                <a class="home-btn home-btn--ghost world-panel__action" href={portal.href}>{ui.open} ↗</a>
+              </div>
+            </article>
+          ))}
         </div>
         <div class="world__progress" aria-hidden="true"><i id="worldProgress"></i></div>
       </div>
@@ -779,21 +771,17 @@ const portals = [
   .home-empty { height: 420px; min-height: 420px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--paper-surface); color: var(--ink-soft); }
   .section-action { margin-top: 48px; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
 
-  .world { height: 100vh; min-height: 720px; position: relative; background: var(--black); color: #fff; }
-  .world__frame { height: 100%; position: relative; overflow: hidden; }
+  .world { height: 360vh; position: relative; background: var(--black); color: #fff; }
+  .world__sticky { height: 100vh; position: sticky; top: 0; overflow: hidden; }
   .world__back { position: absolute; inset: 0; background: radial-gradient(circle at 70% 45%,rgba(244,246,0,.10),transparent 25%),linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px),#0b0d0f; background-size: auto,44px 44px,44px 44px; }
   .world__back::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg,transparent 0 4px,rgba(255,255,255,.018) 4px 5px); animation: scan-move 8s linear infinite; animation-play-state: paused; }
   .world__header { position: absolute; z-index: 4; top: calc(var(--header-h) + 30px); left: max(48px,calc((100vw - var(--container))/2)); max-width: 560px; pointer-events: none; user-select: none; }
   .world__header span { color: var(--primary); font-size: 10px; }
   .world__header h2 { margin: 8px 0 10px; font-size: clamp(46px,7vw,94px); line-height: .85; letter-spacing: -.055em; }
   .world__header p { max-width: 430px; margin: 0; color: #aeb5b7; font-size: 13px; }
-  .world__viewport { position: absolute; inset: 0; z-index: 2; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-behavior: smooth; scrollbar-width: none; cursor: grab; touch-action: pan-x pan-y; }
-  .world__viewport::-webkit-scrollbar { display: none; }
-  .world__viewport:focus-visible { outline: 2px solid var(--primary); outline-offset: -4px; }
-  .world__viewport.is-dragging { cursor: grabbing; scroll-snap-type: none; user-select: none; }
-  .world__track { position: relative; height: 100%; display: flex; width: max-content; }
+  .world__track { position: absolute; left: 0; top: 0; height: 100%; display: flex; }
   .world.is-motion-active .world__back::after { animation-play-state: running; }
-  .world-panel { flex: 0 0 100vw; height: 100%; display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 190px max(48px,calc((100vw - var(--container))/2)) 60px; scroll-snap-align: start; scroll-snap-stop: normal; }
+  .world-panel { flex: 0 0 100vw; height: 100%; display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 190px max(48px,calc((100vw - var(--container))/2)) 60px; }
   .world-panel__art { height: min(58vh,600px); overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,.17); clip-path: polygon(0 0,calc(100% - 38px) 0,100% 38px,100% 100%,60px 100%,0 calc(100% - 60px)); }
   .world-panel__art::before { content: ''; position: absolute; inset: -10%; background: var(--portal-art); transform: translate(calc(var(--mx, 0) * 10px),calc(var(--my, 0) * 8px)) scale(1.08); }
   .world-panel__art::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg,transparent 55%,rgba(0,0,0,.72)),repeating-linear-gradient(90deg,transparent 0 62px,rgba(255,255,255,.05) 63px 64px); }
@@ -809,7 +797,7 @@ const portals = [
   .world-panel__data b { color: var(--primary); font-size: 25px; }
   .world-panel__data span { margin-top: auto; color: #8f989a; font-size: 8px; }
   .world-panel__action { margin-top: 24px; }
-  .world__progress { position: absolute; z-index: 5; left: 0; right: 0; bottom: 0; height: 4px; background: #252a2c; pointer-events: none; }
+  .world__progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: #252a2c; }
   .world__progress i { display: block; width: 100%; height: 100%; background: var(--primary); transform: scaleX(0); transform-origin: left; will-change: transform; }
 
   .systems-layout { display: grid; grid-template-columns: 1.05fr .95fr; min-height: 720px; border: 1px solid var(--line); background: var(--paper-surface); }
@@ -887,7 +875,7 @@ const portals = [
   @keyframes fake-play { to { width: 100%; } }
 
   @media (min-width: 821px) {
-    .world.is-motion-active .world__viewport { will-change: scroll-position; }
+    .world.is-motion-active .world__track { will-change: transform; }
   }
 
   @media (max-width: 1100px) {
@@ -919,10 +907,9 @@ const portals = [
     .news-card__visual,.news-card--feature .news-card__visual { height: 260px; }
     .home-empty { height: 430px; min-height: 430px; }
     .world { height: auto; }
-    .world__frame { height: auto; position: relative; overflow: visible; }
+    .world__sticky { height: auto; position: relative; }
     .world__header { position: relative; top: auto; left: auto; padding: 80px 20px 20px; pointer-events: auto; }
-    .world__viewport { position: relative; overflow: visible; scroll-snap-type: none; cursor: auto; }
-    .world__track { position: relative; display: block; width: auto; transform: none !important; }
+    .world__track { position: relative; display: block; transform: none !important; }
     .world-panel { width: 100%; height: auto; min-height: 100vh; grid-template-columns: 1fr; padding: 45px 20px 80px; gap: 35px; border-top: 1px solid #2c3133; }
     .world-panel__art { height: 50vh; order: 2; }
     .world-panel__copy { padding: 0; order: 1; }
@@ -962,10 +949,9 @@ const portals = [
     .home-boot,.home-cursor { display: none !important; }
     [data-reveal] { opacity: 1 !important; transform: none !important; }
     .world { height: auto; }
-    .world__frame { height: auto; position: relative; overflow: visible; }
+    .world__sticky { height: auto; position: relative; }
     .world__header { position: relative; top: auto; left: auto; padding: 90px max(24px,calc((100vw - var(--container))/2)) 20px; }
-    .world__viewport { position: relative; overflow: visible; scroll-snap-type: none; scroll-behavior: auto; cursor: auto; }
-    .world__track { position: relative; display: block; width: auto; transform: none !important; }
+    .world__track { position: relative; display: block; transform: none !important; }
     .world-panel { min-height: 100vh; }
     .world__progress { display: none; }
   }
@@ -1091,7 +1077,7 @@ const portals = [
     const ticker = home.querySelector<HTMLElement>('.ticker');
     const world = document.getElementById('home-world');
     const finalCta = home.querySelector<HTMLElement>('.final-cta');
-    const worldViewport = document.getElementById('worldViewport') as HTMLElement | null;
+    const worldTrack = document.getElementById('worldTrack') as HTMLElement | null;
     const worldProgress = document.getElementById('worldProgress') as HTMLElement | null;
     let heroVisible = true;
     let radarVisible = false;
@@ -1154,105 +1140,30 @@ const portals = [
       });
     }
 
-    const updatePageScroll = () => {
+    const updateWorld = () => {
       if (heroVisible) heroSection?.style.setProperty('--scroll', Math.min(scrollY, innerHeight * 1.5).toFixed(1));
-    };
-    let scrollRaf: number | null = null;
-    const schedulePageScroll = () => {
-      if (scrollRaf !== null) return;
-      scrollRaf = requestAnimationFrame(() => {
-        scrollRaf = null;
-        updatePageScroll();
-      });
-    };
-    addEventListener('scroll', schedulePageScroll, { passive: true });
-    addEventListener('resize', schedulePageScroll, { passive: true });
-    updatePageScroll();
-
-    let worldScrollRaf: number | null = null;
-    const updateWorldProgress = () => {
-      if (!worldViewport || !worldProgress || innerWidth <= 820 || reduced) {
+      if (!world || !worldTrack || !worldProgress || innerWidth <= 820 || reduced) {
+        if (worldTrack) worldTrack.style.transform = 'none';
         if (worldProgress) worldProgress.style.transform = 'scaleX(0)';
         return;
       }
-      const available = Math.max(0, worldViewport.scrollWidth - worldViewport.clientWidth);
-      const progress = available > 0 ? Math.min(1, Math.max(0, worldViewport.scrollLeft / available)) : 0;
+      const rect = world.getBoundingClientRect();
+      const available = world.offsetHeight - innerHeight;
+      const progress = Math.min(1, Math.max(0, -rect.top / available));
+      worldTrack.style.transform = `translate3d(${-progress * 200}vw,0,0)`;
       worldProgress.style.transform = `scaleX(${progress})`;
     };
-    const scheduleWorldProgress = () => {
-      if (worldScrollRaf !== null) return;
-      worldScrollRaf = requestAnimationFrame(() => {
-        worldScrollRaf = null;
-        updateWorldProgress();
+    let scrollRaf: number | null = null;
+    const scheduleScrollUpdate = () => {
+      if (scrollRaf !== null) return;
+      scrollRaf = requestAnimationFrame(() => {
+        scrollRaf = null;
+        updateWorld();
       });
     };
-    worldViewport?.addEventListener('scroll', scheduleWorldProgress, { passive: true });
-    addEventListener('resize', scheduleWorldProgress, { passive: true });
-    const worldResizeObserver = worldViewport && 'ResizeObserver' in window
-      ? new ResizeObserver(scheduleWorldProgress)
-      : null;
-    if (worldViewport) worldResizeObserver?.observe(worldViewport);
-
-    worldViewport?.addEventListener('wheel', (event) => {
-      if (!event.shiftKey || innerWidth <= 820 || reduced) return;
-      const delta = event.deltaY || event.deltaX;
-      if (!delta) return;
-      const available = worldViewport.scrollWidth - worldViewport.clientWidth;
-      const next = Math.min(available, Math.max(0, worldViewport.scrollLeft + delta));
-      if (next === worldViewport.scrollLeft) return;
-      event.preventDefault();
-      worldViewport.scrollLeft = next;
-    }, { passive: false });
-
-    let worldPointerId: number | null = null;
-    let worldPointerStartX = 0;
-    let worldPointerStartScroll = 0;
-    let worldDragMoved = false;
-    let suppressWorldClickUntil = 0;
-    worldViewport?.addEventListener('pointerdown', (event) => {
-      if (innerWidth <= 820 || reduced || event.pointerType === 'touch' || event.button !== 0) return;
-      worldPointerId = event.pointerId;
-      worldPointerStartX = event.clientX;
-      worldPointerStartScroll = worldViewport.scrollLeft;
-      worldDragMoved = false;
-      worldViewport.setPointerCapture(event.pointerId);
-      worldViewport.classList.add('is-dragging');
-    });
-    worldViewport?.addEventListener('pointermove', (event) => {
-      if (worldPointerId !== event.pointerId) return;
-      const distance = event.clientX - worldPointerStartX;
-      if (Math.abs(distance) > 5) worldDragMoved = true;
-      if (!worldDragMoved) return;
-      event.preventDefault();
-      worldViewport.scrollLeft = worldPointerStartScroll - distance;
-    });
-    const finishWorldDrag = (event: PointerEvent) => {
-      if (!worldViewport || worldPointerId !== event.pointerId) return;
-      if (worldViewport.hasPointerCapture(event.pointerId)) worldViewport.releasePointerCapture(event.pointerId);
-      worldViewport.classList.remove('is-dragging');
-      if (worldDragMoved) suppressWorldClickUntil = performance.now() + 300;
-      worldPointerId = null;
-    };
-    worldViewport?.addEventListener('pointerup', finishWorldDrag);
-    worldViewport?.addEventListener('pointercancel', finishWorldDrag);
-    worldViewport?.addEventListener('click', (event) => {
-      if (performance.now() >= suppressWorldClickUntil) return;
-      event.preventDefault();
-      event.stopPropagation();
-    }, true);
-    worldViewport?.addEventListener('keydown', (event) => {
-      if (event.target !== worldViewport || innerWidth <= 820 || reduced) return;
-      const page = worldViewport.clientWidth;
-      let left: number | null = null;
-      if (event.key === 'ArrowRight' || event.key === 'PageDown') left = worldViewport.scrollLeft + page;
-      if (event.key === 'ArrowLeft' || event.key === 'PageUp') left = worldViewport.scrollLeft - page;
-      if (event.key === 'Home') left = 0;
-      if (event.key === 'End') left = worldViewport.scrollWidth;
-      if (left === null) return;
-      event.preventDefault();
-      worldViewport.scrollTo({ left, behavior: 'smooth' });
-    });
-    updateWorldProgress();
+    addEventListener('scroll', scheduleScrollUpdate, { passive: true });
+    addEventListener('resize', scheduleScrollUpdate, { passive: true });
+    updateWorld();
 
     const counters = home.querySelectorAll<HTMLElement>('.counter');
     let counterObserver: IntersectionObserver | null = null;
@@ -1624,14 +1535,13 @@ const portals = [
     modal?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeModal));
 
     addEventListener('pagehide', () => {
-      [cursorRaf, scrollRaf, worldScrollRaf, heroRaf, heroResizeRaf, radarRaf, radarResizeRaf].forEach((id) => {
+      [cursorRaf, scrollRaf, heroRaf, heroResizeRaf, radarRaf, radarResizeRaf].forEach((id) => {
         if (id !== null) cancelAnimationFrame(id);
       });
       if (modalIdleTimer !== null) clearTimeout(modalIdleTimer);
       stopNewsCarousels.forEach((stopCarousel) => stopCarousel());
       motionObserver?.disconnect();
       counterObserver?.disconnect();
-      worldResizeObserver?.disconnect();
       heroObserver?.disconnect();
       heroResizeObserver?.disconnect();
       radarObserver?.disconnect();
