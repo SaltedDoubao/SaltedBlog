@@ -24,7 +24,11 @@ const ui = {
     newsDescription: '由 AI 情报管线每日聚合的前沿信号，点击进入完整日报。',
     digestEmpty: '情报信号待接入 / 管线尚未生成日报',
     digestOpen: '阅读完整日报',
-    carouselLabel: '重要情报轮播',
+    priorityCarouselLabel: '高优先级情报轮播',
+    standardCarouselLabel: '普通情报轮播',
+    priorityEmpty: '暂无 4–5 星高优先级情报',
+    standardEmpty: '暂无 1–3 星普通情报',
+    noSignal: '无信号',
     carouselPrev: '上一组情报',
     carouselNext: '下一组情报',
     worldTitle: '内容疆域',
@@ -84,7 +88,11 @@ const ui = {
     newsDescription: 'Frontier signals aggregated daily by the AI intel pipeline. Open the full digest.',
     digestEmpty: 'AWAITING INTEL SIGNAL / NO DIGEST GENERATED YET',
     digestOpen: 'Read Full Digest',
-    carouselLabel: 'Important intelligence carousel',
+    priorityCarouselLabel: 'High-priority intelligence carousel',
+    standardCarouselLabel: 'Standard intelligence carousel',
+    priorityEmpty: 'No 4–5 star high-priority intelligence',
+    standardEmpty: 'No 1–3 star standard intelligence',
+    noSignal: 'NO SIGNAL',
     carouselPrev: 'Previous intelligence',
     carouselNext: 'Next intelligence',
     worldTitle: 'Content Frontier',
@@ -160,18 +168,32 @@ const newsDescription = configured('home_news_description', ui.newsDescription);
 const digestHref = digest ? localePath(lang, `/posts/${digest.slug}`) : '';
 const digestTitle = digest?.title ?? '';
 const digestSummary = digest?.summary ?? '';
-// items 已按 importance 降序；小卡片每两条组成一页同步轮播。
+// items 已按 importance 降序；分组后继续保持各组原有顺序。
 const digestItems = (digest?.items ?? []).map((item, index) => ({
   title: item.title,
   summary: item.summary,
   source: item.source,
+  importance: item.importance,
   stars: '★'.repeat(Math.min(Math.max(item.importance, 1), 5)),
   href: `${digestHref}#${item.anchor}`,
   art: (index % 2) + 2,
 }));
-const digestSlides = Array.from({ length: Math.ceil(digestItems.length / 2) }, (_, index) =>
-  digestItems.slice(index * 2, index * 2 + 2)
-);
+const digestCarousels = [
+  {
+    id: 'priority',
+    label: ui.priorityCarouselLabel,
+    empty: ui.priorityEmpty,
+    interval: 5000,
+    items: digestItems.filter((item) => item.importance >= 4 && item.importance <= 5),
+  },
+  {
+    id: 'standard',
+    label: ui.standardCarouselLabel,
+    empty: ui.standardEmpty,
+    interval: 7000,
+    items: digestItems.filter((item) => item.importance >= 1 && item.importance <= 3),
+  },
+];
 const tickerHeadlines = (digest?.items ?? [])
   .slice(0, 5)
   .map(
@@ -317,25 +339,27 @@ const portals = [
                   <a class="news-card__arrow" href={digestHref} aria-label={ui.digestOpen}>↗</a>
                 </div>
               </article>
-              <div
-                class="news-carousel"
-                data-news-carousel
-                data-page-count={digestSlides.length}
-                aria-label={ui.carouselLabel}
-                aria-roledescription="carousel"
-                data-reveal="right"
-              >
-                <div class="news-carousel__viewport" aria-live="off">
-                  {digestSlides.map((slide, pageIndex) => (
-                    <div
-                      class="news-carousel__slide"
-                      data-news-slide
-                      data-active={pageIndex === 0 ? 'true' : 'false'}
-                      hidden={pageIndex !== 0}
-                      aria-label={`${pageIndex + 1} / ${digestSlides.length}`}
-                    >
-                      {slide.map((item) => (
-                        <article class:list={['news-card', 'interactive', { 'news-card--wide': slide.length === 1 }]}>
+              {digestCarousels.map((carousel) => (
+                <div
+                  class="news-carousel"
+                  data-news-carousel
+                  data-carousel-id={carousel.id}
+                  data-interval={carousel.interval}
+                  data-page-count={carousel.items.length}
+                  aria-label={carousel.label}
+                  aria-roledescription="carousel"
+                  data-reveal="right"
+                >
+                  <div class="news-carousel__viewport" aria-live="off">
+                    {carousel.items.length ? carousel.items.map((item, pageIndex) => (
+                      <div
+                        class="news-carousel__slide"
+                        data-news-slide
+                        data-active={pageIndex === 0 ? 'true' : 'false'}
+                        hidden={pageIndex !== 0}
+                        aria-label={`${pageIndex + 1} / ${carousel.items.length}`}
+                      >
+                        <article class="news-card interactive">
                           <a class="news-card__visual" href={item.href} aria-label={item.title}>
                             <span class={`news-card__art news-card__art--${item.art}`} />
                           </a>
@@ -348,28 +372,33 @@ const portals = [
                             <a class="news-card__arrow" href={item.href} aria-label={item.title}>↗</a>
                           </div>
                         </article>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-                {digestSlides.length > 1 && (
-                  <div class="news-carousel__controls mono">
-                    <button type="button" data-news-prev aria-label={ui.carouselPrev}>←</button>
-                    <div class="news-carousel__dots">
-                      {digestSlides.map((_, index) => (
-                        <button
-                          type="button"
-                          data-news-dot={index}
-                          data-active={index === 0 ? 'true' : 'false'}
-                          aria-label={`${index + 1} / ${digestSlides.length}`}
-                          aria-current={index === 0 ? 'true' : undefined}
-                        />
-                      ))}
-                    </div>
-                    <button type="button" data-news-next aria-label={ui.carouselNext}>→</button>
+                      </div>
+                    )) : (
+                      <article class="news-card news-card--empty mono" role="status">
+                        <strong>{ui.noSignal}</strong>
+                        <span>{carousel.empty}</span>
+                      </article>
+                    )}
                   </div>
-                )}
-              </div>
+                  {carousel.items.length > 1 && (
+                    <div class="news-carousel__controls mono">
+                      <button type="button" data-news-prev aria-label={`${ui.carouselPrev} / ${carousel.label}`}>←</button>
+                      <div class="news-carousel__dots">
+                        {carousel.items.map((_, index) => (
+                          <button
+                            type="button"
+                            data-news-dot={index}
+                            data-active={index === 0 ? 'true' : 'false'}
+                            aria-label={`${carousel.label} ${index + 1} / ${carousel.items.length}`}
+                            aria-current={index === 0 ? 'true' : undefined}
+                          />
+                        ))}
+                      </div>
+                      <button type="button" data-news-next aria-label={`${ui.carouselNext} / ${carousel.label}`}>→</button>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           ) : (
             <div class="home-empty mono" data-reveal>{ui.digestEmpty}</div>
@@ -710,9 +739,9 @@ const portals = [
   :global(html[data-home-boot='skip']) .hero [data-reveal] { opacity: 1; transform: none; }
 
   .news-grid { display: grid; grid-template-columns: 1.35fr .825fr .825fr; gap: 20px; }
-  .news-carousel { grid-column: span 2; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+  .news-carousel { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
   .news-carousel__viewport { min-width: 0; height: 420px; }
-  .news-carousel__slide { height: 420px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; animation: news-slide-in 320ms var(--ease) both; }
+  .news-carousel__slide { height: 420px; animation: news-slide-in 320ms var(--ease) both; }
   .news-carousel__slide[hidden] { display: none; }
   .news-card--wide { grid-column: 1/-1; }
   .news-carousel__controls { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 14px; }
@@ -724,6 +753,9 @@ const portals = [
   @keyframes news-slide-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
   .news-card { min-height: 420px; position: relative; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--paper-surface); transition: border-color 300ms,transform 350ms var(--ease),box-shadow 350ms var(--ease); }
   .news-carousel .news-card { height: 420px; min-height: 420px; }
+  .news-card--empty { align-items: center; justify-content: center; gap: 10px; padding: 28px; text-align: center; color: var(--ink-soft); }
+  .news-card--empty strong { color: var(--ink); font-size: clamp(24px,3vw,42px); letter-spacing: -.04em; }
+  .news-card--empty span { max-width: 240px; font-size: 10px; letter-spacing: .08em; }
   .news-card--feature { min-height: 490px; }
   .news-card:hover { transform: translateY(-6px); border-color: var(--border-strong); box-shadow: 8px 8px 0 var(--border-strong); }
   .news-card__visual { height: 260px; display: block; overflow: hidden; position: relative; background: #6d7778; }
@@ -861,7 +893,6 @@ const portals = [
   @media (max-width: 1100px) {
     .news-grid { grid-template-columns: 1fr 1fr; }
     .news-card--feature { grid-column: 1/-1; }
-    .news-carousel { grid-column: 1/-1; }
     .world-panel { grid-template-columns: 1.12fr .88fr; }
     .world-panel__copy { padding-left: 45px; }
     .operator-stage { grid-template-columns: 260px 1fr; }
@@ -881,8 +912,7 @@ const portals = [
     .news-grid { grid-template-columns: 1fr; }
     .news-card--feature { grid-column: auto; }
     .news-carousel { grid-column: auto; }
-    .news-carousel__viewport { height: 880px; }
-    .news-carousel__slide { height: 880px; grid-template-columns: 1fr; grid-template-rows: repeat(2,430px); }
+    .news-carousel__viewport,.news-carousel__slide { height: 430px; }
     .news-card--wide { grid-column: auto; }
     .news-card,.news-card--feature { min-height: 430px; }
     .news-carousel .news-card { height: 430px; min-height: 430px; }
@@ -1001,16 +1031,17 @@ const portals = [
       });
     }
 
-    const newsCarousel = home.querySelector<HTMLElement>('[data-news-carousel]');
-    if (newsCarousel) {
+    const stopNewsCarousels: Array<() => void> = [];
+    home.querySelectorAll<HTMLElement>('[data-news-carousel]').forEach((newsCarousel) => {
       const slides = Array.from(newsCarousel.querySelectorAll<HTMLElement>('[data-news-slide]'));
       const dots = Array.from(newsCarousel.querySelectorAll<HTMLButtonElement>('[data-news-dot]'));
+      const interval = Number.parseInt(newsCarousel.dataset.interval || '5000', 10);
       let activeIndex = 0;
       let paused = false;
       let timer: number | null = null;
 
       const showSlide = (next: number) => {
-        if (slides.length < 2) return;
+        if (!slides.length) return;
         activeIndex = (next + slides.length) % slides.length;
         slides.forEach((slide, index) => {
           const active = index === activeIndex;
@@ -1035,7 +1066,7 @@ const portals = [
         if (reduced || slides.length < 2) return;
         timer = window.setInterval(() => {
           if (!paused && !document.hidden) showSlide(activeIndex + 1);
-        }, 5000);
+        }, interval);
       };
       const manualMove = (next: number) => {
         showSlide(next);
@@ -1053,8 +1084,8 @@ const portals = [
       });
       showSlide(0);
       startCarousel();
-      window.addEventListener('pagehide', stopCarousel, { once: true });
-    }
+      stopNewsCarousels.push(stopCarousel);
+    });
 
     const heroSection = home.querySelector<HTMLElement>('.hero');
     const ticker = home.querySelector<HTMLElement>('.ticker');
@@ -1597,6 +1628,7 @@ const portals = [
         if (id !== null) cancelAnimationFrame(id);
       });
       if (modalIdleTimer !== null) clearTimeout(modalIdleTimer);
+      stopNewsCarousels.forEach((stopCarousel) => stopCarousel());
       motionObserver?.disconnect();
       counterObserver?.disconnect();
       worldResizeObserver?.disconnect();
