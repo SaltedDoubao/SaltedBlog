@@ -22,6 +22,40 @@ use crate::state::AppState;
 
 pub const FORMAT_VERSION: u32 = 2;
 
+pub const ERROR_TOOL_MISSING: &str = "backup_tool_missing";
+pub const ERROR_TOOL_INCOMPATIBLE: &str = "backup_tool_incompatible";
+pub const ERROR_AUTH_FAILED: &str = "backup_auth_failed";
+pub const ERROR_STORAGE_FAILED: &str = "backup_storage_failed";
+pub const ERROR_COMMAND_FAILED: &str = "backup_command_failed";
+pub const ERROR_INTERNAL: &str = "backup_internal_error";
+
+pub struct PublicBackupFailure {
+    pub code: &'static str,
+    pub message: String,
+}
+
+pub fn public_failure(err: &ApiError) -> PublicBackupFailure {
+    let (code, message) = match err.code {
+        ERROR_TOOL_MISSING => (
+            ERROR_TOOL_MISSING,
+            "PostgreSQL 备份工具不可用，请检查运行镜像",
+        ),
+        ERROR_TOOL_INCOMPATIBLE => (
+            ERROR_TOOL_INCOMPATIBLE,
+            "PostgreSQL 备份工具与数据库版本不兼容",
+        ),
+        ERROR_AUTH_FAILED => (ERROR_AUTH_FAILED, "PostgreSQL 备份认证或权限检查失败"),
+        ERROR_STORAGE_FAILED => (ERROR_STORAGE_FAILED, "备份存储空间或文件写入失败"),
+        ERROR_COMMAND_FAILED => (ERROR_COMMAND_FAILED, "PostgreSQL 备份命令执行失败"),
+        _ if !err.status.is_server_error() => (err.code, err.message.as_str()),
+        _ => (ERROR_INTERNAL, "备份任务执行失败"),
+    };
+    PublicBackupFailure {
+        code,
+        message: message.to_string(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DbEngine {
     Sqlite,
@@ -131,14 +165,20 @@ fn ensure_disk_space(cfg: &Config, engine: DbEngine) -> ApiResult<()> {
     let need = db_bytes
         .saturating_add(upload_bytes)
         .saturating_add(32 * 1024 * 1024);
-    let avail = available_space(&cfg.backup_dir)
-        .map_err(|e| ApiError::internal(format!("failed to check disk space: {e}")))?;
+    let avail = available_space(&cfg.backup_dir).map_err(|e| {
+        ApiError::internal_with_code(
+            ERROR_STORAGE_FAILED,
+            "备份存储空间检查失败",
+            format!("failed to check disk space: {e}"),
+        )
+    })?;
     if avail < need {
         return Err(ApiError::bad_request(format!(
             "磁盘空间不足：需要约 {} MB，可用 {} MB",
             need / (1024 * 1024),
             avail / (1024 * 1024)
-        )));
+        ))
+        .with_code(ERROR_STORAGE_FAILED));
     }
     Ok(())
 }
@@ -211,6 +251,96 @@ async fn dump_sqlite(db: &DatabaseConnection, dest: &Path) -> ApiResult<()> {
     Ok(())
 }
 
+fn parse_postgres_tool_major(version: &str) -> Option<u32> {
+    version
+        .split(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .find(|part| part.contains('.') && part.starts_with(|c: char| c.is_ascii_digit()))
+        .and_then(|part| part.split('.').next())
+        .and_then(|major| major.parse().ok())
+}
+
+fn postgres_tool_major(tool: &'static str) -> ApiResult<u32> {
+    let output = Command::new(tool).arg("--version").output().map_err(|e| {
+        let code = if e.kind() == io::ErrorKind::NotFound {
+            ERROR_TOOL_MISSING
+        } else {
+            ERROR_COMMAND_FAILED
+        };
+        ApiError::internal_with_code(
+            code,
+            "PostgreSQL 备份工具检查失败",
+            format!("failed to run {tool} --version: {e}"),
+        )
+    })?;
+    if !output.status.success() {
+        return Err(ApiError::internal_with_code(
+            ERROR_COMMAND_FAILED,
+            "PostgreSQL 备份工具检查失败",
+            format!(
+                "{tool} --version failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        ));
+    }
+    let version = String::from_utf8_lossy(&output.stdout);
+    parse_postgres_tool_major(&version).ok_or_else(|| {
+        ApiError::internal_with_code(
+            ERROR_COMMAND_FAILED,
+            "PostgreSQL 备份工具版本无法识别",
+            format!("unrecognized {tool} version output: {version}"),
+        )
+    })
+}
+
+async fn ensure_postgres_tools(db: &DatabaseConnection) -> ApiResult<()> {
+    let row = db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT current_setting('server_version_num')::INTEGER AS version_num".to_string(),
+        ))
+        .await?
+        .ok_or_else(|| ApiError::internal("PostgreSQL version query returned no row"))?;
+    let version_num: i32 = row.try_get("", "version_num")?;
+    let server_major = (version_num / 10_000).max(0) as u32;
+    let (dump_major, restore_major) = tokio::task::spawn_blocking(|| {
+        Ok::<_, ApiError>((
+            postgres_tool_major("pg_dump")?,
+            postgres_tool_major("pg_restore")?,
+        ))
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("join PostgreSQL tool check: {e}")))??;
+    if dump_major < server_major || restore_major < server_major {
+        return Err(ApiError::internal_with_code(
+            ERROR_TOOL_INCOMPATIBLE,
+            "PostgreSQL 备份工具版本过低",
+            format!(
+                "PostgreSQL tool version mismatch: server={server_major}, pg_dump={dump_major}, pg_restore={restore_major}"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn postgres_command_error(tool: &'static str, stderr: &str) -> ApiError {
+    let lower = stderr.to_ascii_lowercase();
+    let (code, message) = if lower.contains("server version mismatch")
+        || lower.contains("aborting because of server version mismatch")
+    {
+        (ERROR_TOOL_INCOMPATIBLE, "PostgreSQL 备份工具版本不兼容")
+    } else if lower.contains("password authentication failed")
+        || lower.contains("permission denied")
+        || lower.contains("must be owner")
+    {
+        (ERROR_AUTH_FAILED, "PostgreSQL 备份认证或权限检查失败")
+    } else if lower.contains("no space left on device") || lower.contains("disk full") {
+        (ERROR_STORAGE_FAILED, "备份存储空间不足")
+    } else {
+        (ERROR_COMMAND_FAILED, "PostgreSQL 备份命令执行失败")
+    };
+    ApiError::internal_with_code(code, message, format!("{tool} failed: {stderr}"))
+}
+
 fn dump_postgres(database_url: &str, dest: &Path) -> ApiResult<()> {
     if dest.exists() {
         let _ = fs::remove_file(dest);
@@ -237,13 +367,19 @@ fn dump_postgres(database_url: &str, dest: &Path) -> ApiResult<()> {
         command.env("PGPASSWORD", password);
     }
     let output = command.output().map_err(|e| {
-        ApiError::internal(format!(
-            "failed to run pg_dump (is postgresql-client installed?): {e}"
-        ))
+        ApiError::internal_with_code(
+            if e.kind() == io::ErrorKind::NotFound {
+                ERROR_TOOL_MISSING
+            } else {
+                ERROR_COMMAND_FAILED
+            },
+            "PostgreSQL 备份工具启动失败",
+            format!("failed to run pg_dump: {e}"),
+        )
     })?;
     if !output.status.success() {
         let err = String::from_utf8_lossy(&output.stderr);
-        return Err(ApiError::internal(format!("pg_dump failed: {err}")));
+        return Err(postgres_command_error("pg_dump", &err));
     }
     Ok(())
 }
@@ -272,12 +408,20 @@ fn restore_postgres(database_url: &str, dump_path: &Path) -> ApiResult<()> {
     if let Some(password) = parsed.password() {
         command.env("PGPASSWORD", password);
     }
-    let import = command
-        .output()
-        .map_err(|e| ApiError::internal(format!("failed to run pg_restore: {e}")))?;
+    let import = command.output().map_err(|e| {
+        ApiError::internal_with_code(
+            if e.kind() == io::ErrorKind::NotFound {
+                ERROR_TOOL_MISSING
+            } else {
+                ERROR_COMMAND_FAILED
+            },
+            "PostgreSQL 恢复工具启动失败",
+            format!("failed to run pg_restore: {e}"),
+        )
+    })?;
     if !import.status.success() {
         let err = String::from_utf8_lossy(&import.stderr);
-        return Err(ApiError::internal(format!("pg_restore failed: {err}")));
+        return Err(postgres_command_error("pg_restore", &err));
     }
     Ok(())
 }
@@ -682,6 +826,9 @@ pub fn validate_uploaded_backup(cfg: &Config, path: &Path) -> ApiResult<String> 
 pub async fn create_backup(state: &AppState) -> ApiResult<String> {
     let cfg = &state.cfg;
     let engine = detect_engine(&cfg.database_url)?;
+    if engine == DbEngine::Postgres {
+        ensure_postgres_tools(&state.db()).await?;
+    }
     ensure_disk_space(cfg, engine)?;
     fs::create_dir_all(&cfg.backup_dir).map_err(|e| ApiError::internal(e.to_string()))?;
 
@@ -966,5 +1113,39 @@ mod tests {
         assert!(safe_zip_path("../secret").is_err());
         assert!(safe_zip_path("/etc/passwd").is_err());
         assert!(safe_zip_path("C:\\Windows\\system.ini").is_err());
+    }
+
+    #[test]
+    fn parses_postgres_tool_versions() {
+        assert_eq!(
+            parse_postgres_tool_major("pg_dump (PostgreSQL) 17.5 (Debian 17.5-1)"),
+            Some(17)
+        );
+        assert_eq!(
+            parse_postgres_tool_major("pg_restore (PostgreSQL) 18.1"),
+            Some(18)
+        );
+        assert_eq!(parse_postgres_tool_major("unknown"), None);
+    }
+
+    #[test]
+    fn classifies_postgres_command_failures_without_exposing_detail() {
+        let version = postgres_command_error(
+            "pg_dump",
+            "server version: 17.5; pg_dump version: 15.10; aborting because of server version mismatch",
+        );
+        assert_eq!(version.code, ERROR_TOOL_INCOMPATIBLE);
+        assert_eq!(public_failure(&version).code, ERROR_TOOL_INCOMPATIBLE);
+        assert!(!public_failure(&version).message.contains("17.5"));
+
+        let auth = postgres_command_error(
+            "pg_dump",
+            "connection failed: password authentication failed for user salted_owner",
+        );
+        assert_eq!(auth.code, ERROR_AUTH_FAILED);
+        assert!(!public_failure(&auth).message.contains("salted_owner"));
+
+        let storage = postgres_command_error("pg_dump", "No space left on device");
+        assert_eq!(storage.code, ERROR_STORAGE_FAILED);
     }
 }

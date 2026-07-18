@@ -11,10 +11,10 @@ COPY api/ ./api/
 WORKDIR /build/api
 RUN cargo build --release --locked 2>/dev/null || cargo build --release
 
-FROM debian:bookworm-slim
+FROM postgres:17-bookworm
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl postgresql-client \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
     && groupadd --gid 10001 salted \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin salted \
     && mkdir -p /data/uploads /data/backups \

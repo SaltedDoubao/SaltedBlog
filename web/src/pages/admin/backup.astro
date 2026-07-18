@@ -74,6 +74,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
   interface JobStatus {
     status: string;
     error?: string | null;
+    error_code?: string | null;
     backup_name?: string | null;
   }
 
@@ -174,6 +175,11 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     }
   }
 
+  function jobFailure(prefix: string, jobId: string, job: JobStatus): string {
+    const code = job.error_code ? ` / ${job.error_code}` : '';
+    return `${prefix}：${job.error ?? 'unknown'}（任务 ID: ${jobId}${code}）`;
+  }
+
   async function onCreate() {
     if (busy) return;
     setBusy(true);
@@ -184,8 +190,9 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
       });
       const job = await pollJob(job_id);
       if (job.status === 'error') {
-        showStatus(`备份失败：${job.error ?? 'unknown'}`, 'error');
-        toast(`备份失败：${job.error ?? 'unknown'}`, 'error');
+        const message = jobFailure('备份失败', job_id, job);
+        showStatus(message, 'error');
+        toast(message, 'error');
       } else {
         showStatus(`备份完成：${job.backup_name ?? ''}`, 'ok');
         toast('备份已生成');
@@ -218,8 +225,9 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
       );
       const job = await pollJob(job_id);
       if (job.status === 'error') {
-        showStatus(`恢复失败：${job.error ?? 'unknown'}`, 'error');
-        toast(`恢复失败：${job.error ?? 'unknown'}`, 'error');
+        const message = jobFailure('恢复失败', job_id, job);
+        showStatus(message, 'error');
+        toast(message, 'error');
       } else {
         showStatus('恢复完成', 'ok');
         toast('恢复完成');

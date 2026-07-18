@@ -15,6 +15,7 @@ use uuid::Uuid;
 use crate::auth::{require_step_up, AdminContext};
 use crate::backup;
 use crate::error::{ApiError, ApiResult};
+use crate::logging::{self, NewEvent, CATEGORY_BACKUP};
 use crate::state::{AppState, BackupJobStatus};
 
 pub fn router(backup_upload_max_mb: usize) -> Router<AppState> {
@@ -46,11 +47,12 @@ async fn get_job(
     Ok(Json(json!({
         "status": job.status,
         "error": job.error,
+        "error_code": job.error_code,
         "backup_name": job.backup_name,
     })))
 }
 
-fn spawn_job<F, Fut>(state: AppState, job_id: String, work: F)
+fn spawn_job<F, Fut>(state: AppState, job_id: String, operation: &'static str, work: F)
 where
     F: FnOnce(AppState) -> Fut + Send + 'static,
     Fut: std::future::Future<Output = ApiResult<Option<String>>> + Send,
@@ -60,6 +62,7 @@ where
         BackupJobStatus {
             status: "running".into(),
             error: None,
+            error_code: None,
             backup_name: None,
         },
     );
@@ -74,21 +77,63 @@ where
         };
         match result {
             Ok(name) => {
+                logging::record(
+                    &state,
+                    NewEvent {
+                        category: CATEGORY_BACKUP,
+                        level: "info",
+                        event_type: operation.into(),
+                        outcome: "success",
+                        resource_type: Some("backup_job".into()),
+                        resource_id: Some(job_id.clone()),
+                        summary: format!("备份任务完成：{operation}"),
+                        detail: name
+                            .as_ref()
+                            .map(|backup_name| json!({ "backup_name": backup_name })),
+                        ..Default::default()
+                    },
+                )
+                .await;
                 state.set_job(
                     &job_id,
                     BackupJobStatus {
                         status: "done".into(),
                         error: None,
+                        error_code: None,
                         backup_name: name,
                     },
                 );
             }
             Err(err) => {
+                let failure = backup::public_failure(&err);
+                tracing::error!(
+                    job_id = %job_id,
+                    operation,
+                    error_code = failure.code,
+                    error = %err,
+                    "backup background job failed"
+                );
+                logging::record(
+                    &state,
+                    NewEvent {
+                        category: CATEGORY_BACKUP,
+                        level: "error",
+                        event_type: operation.into(),
+                        outcome: "failure",
+                        resource_type: Some("backup_job".into()),
+                        resource_id: Some(job_id.clone()),
+                        summary: format!("备份任务失败：{}", failure.message),
+                        detail: Some(json!({ "error_code": failure.code })),
+                        ..Default::default()
+                    },
+                )
+                .await;
                 state.set_job(
                     &job_id,
                     BackupJobStatus {
                         status: "error".into(),
-                        error: Some(err.message),
+                        error: Some(failure.message),
+                        error_code: Some(failure.code.into()),
                         backup_name: None,
                     },
                 );
@@ -104,10 +149,11 @@ async fn create_backup_job(State(state): State<AppState>) -> ApiResult<impl Into
         BackupJobStatus {
             status: "pending".into(),
             error: None,
+            error_code: None,
             backup_name: None,
         },
     );
-    spawn_job(state, job_id.clone(), |state| async move {
+    spawn_job(state, job_id.clone(), "backup.create", |state| async move {
         let name = backup::create_backup(&state).await?;
         Ok(Some(name))
     });
@@ -133,14 +179,20 @@ async fn restore_backup_job(
         BackupJobStatus {
             status: "pending".into(),
             error: None,
+            error_code: None,
             backup_name: None,
         },
     );
     let name_c = name.clone();
-    spawn_job(state, job_id.clone(), move |state| async move {
-        backup::restore_backup(&state, &name_c).await?;
-        Ok(Some(name_c))
-    });
+    spawn_job(
+        state,
+        job_id.clone(),
+        "backup.restore",
+        move |state| async move {
+            backup::restore_backup(&state, &name_c).await?;
+            Ok(Some(name_c))
+        },
+    );
     Ok(Json(json!({ "job_id": job_id })))
 }
 

@@ -126,6 +126,7 @@ mod limiter_tests {
 pub struct BackupJobStatus {
     pub status: String,
     pub error: Option<String>,
+    pub error_code: Option<String>,
     pub backup_name: Option<String>,
 }
 

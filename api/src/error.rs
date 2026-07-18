@@ -35,6 +35,11 @@ impl ApiError {
         Self::new(StatusCode::BAD_REQUEST, message)
     }
 
+    pub fn with_code(mut self, code: &'static str) -> Self {
+        self.code = code;
+        self
+    }
+
     pub fn unauthorized() -> Self {
         Self::new(StatusCode::UNAUTHORIZED, "unauthorized")
     }
@@ -49,6 +54,19 @@ impl ApiError {
             message: "internal server error".into(),
             code: "internal_error",
             private_detail: Some(message.into()),
+        }
+    }
+
+    pub fn internal_with_code(
+        code: &'static str,
+        message: impl Into<String>,
+        private_detail: impl Into<String>,
+    ) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: message.into(),
+            code,
+            private_detail: Some(private_detail.into()),
         }
     }
 
