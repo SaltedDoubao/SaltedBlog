@@ -276,12 +276,12 @@ async fn download_backup(
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
     let disposition = format!("attachment; filename=\"{name}\"");
-    Ok(Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/zip")
         .header(header::CONTENT_DISPOSITION, disposition)
         .body(body)
-        .map_err(|e| ApiError::internal(e.to_string()))?)
+        .map_err(|e| ApiError::internal(e.to_string()))
 }
 
 async fn delete_backup(

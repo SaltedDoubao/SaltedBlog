@@ -1,0 +1,4 @@
+interface:
+  display_name: "部署预检"
+  short_description: "校验 Compose、Caddy、生产镜像和运行时健康"
+  default_prompt: "Use $deployment-preflight to validate this SaltedBlog deployment change."

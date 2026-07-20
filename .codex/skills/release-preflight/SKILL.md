@@ -1,26 +1,23 @@
 ---
 name: release-preflight
-description: Validate SaltedBlog releases before pushing a v* tag. Use for any version bump, image release, Dockerfile/base-image change, release tag, or request to publish a GitHub release.
+description: Prepare and validate SaltedBlog releases. Use for VERSION changes, semantic version bumps, v* tags, GHCR image publication, GitHub Releases, or checking an exact release candidate commit; do not use for an ordinary Dockerfile change without a version bump.
 ---
 
 # Release Preflight
 
-Run this workflow before creating or pushing any `v*` release tag.
-
-1. Determine the target version and ensure every project version and deployment image-tag example matches it.
-2. Run the deterministic gate from the repository root:
+1. Start from a clean `main` and update every version surface:
 
    ```powershell
-   python .codex/skills/release-preflight/scripts/release_preflight.py --version 0.1.4
+   python .codex/skills/release-preflight/scripts/bump_version.py --version 0.1.5
    ```
 
-   The gate checks a clean worktree, version consistency, absence of the local and remote tag,
-   formatting, Rust tests, the web build, all production Docker builds, and API dynamic-library
-   resolution inside the runtime image.
-3. Push `main`, wait for the `release-preflight` GitHub Actions run for that exact commit to pass,
-   then create and push the annotated `v<version>` tag.
-4. Inspect the triggered `release-images` run. Do not move, delete, or force-update a failed
-   release tag; fix forward and issue the next patch version instead.
+2. Review the version-only diff, commit it as `chore(release): v<version>`, then run on the clean candidate commit:
 
-If Docker is unavailable locally, stop before tagging. Push the candidate commit and use the
-`release-preflight` GitHub Actions workflow to obtain an equivalent clean build before release.
+   ```powershell
+   python .codex/skills/release-preflight/scripts/release_preflight.py
+   ```
+
+3. Push `main` and require the `release-preflight` Actions run for that exact SHA to succeed.
+4. Create and push an annotated `v<version>` tag on the same SHA. Inspect `release-images` until it succeeds.
+
+`--bootstrap` is reserved for the one commit that first adds `VERSION` at the already-published version. `--skip-images` is reserved for CI, whose image matrix performs the omitted builds. Docker is mandatory for the normal local gate. Never reuse or move a failed release tag; fix forward with the next patch version.

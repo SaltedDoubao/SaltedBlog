@@ -1,0 +1,4 @@
+interface:
+  display_name: "迁移安全"
+  short_description: "验证 SaltedBlog 数据库迁移顺序、双引擎兼容性与历史不可变性"
+  default_prompt: "Use $migration-safety to validate this SaltedBlog database migration safely."

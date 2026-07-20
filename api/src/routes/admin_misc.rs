@@ -656,7 +656,7 @@ async fn stats_dashboard(State(state): State<AppState>) -> ApiResult<impl IntoRe
     }
 
     let mut top_paths: Vec<(String, u64)> = path_pv.into_iter().collect();
-    top_paths.sort_by(|a, b| b.1.cmp(&a.1));
+    top_paths.sort_by_key(|item| std::cmp::Reverse(item.1));
     top_paths.truncate(10);
     let top_paths: Vec<serde_json::Value> = top_paths
         .into_iter()

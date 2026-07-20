@@ -76,7 +76,7 @@ impl DigestDoc {
     pub fn items_by_importance(&self) -> Vec<&DigestItem> {
         let mut items: Vec<&DigestItem> =
             self.sections.iter().flat_map(|s| s.items.iter()).collect();
-        items.sort_by(|a, b| b.importance.cmp(&a.importance));
+        items.sort_by_key(|item| std::cmp::Reverse(item.importance));
         items
     }
 }

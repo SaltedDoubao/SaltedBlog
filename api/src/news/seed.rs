@@ -118,43 +118,6 @@ fn migrated_publish_options(auto_publish: bool, publish_time: String) -> (String
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn legacy_digest_time_stays_within_day() {
-        assert_eq!(
-            migrated_digest_times("08:00"),
-            ("08:00".into(), "09:00".into())
-        );
-        assert_eq!(
-            migrated_digest_times("23:30"),
-            ("23:30".into(), "23:59".into())
-        );
-        assert_eq!(
-            migrated_digest_times("23:59"),
-            ("22:59".into(), "23:59".into())
-        );
-        assert_eq!(
-            migrated_digest_times("bad"),
-            ("08:00".into(), "09:00".into())
-        );
-    }
-
-    #[test]
-    fn legacy_auto_publish_controls_task_mode() {
-        assert_eq!(
-            migrated_publish_options(true, "09:00".into()),
-            ("scheduled".into(), Some("09:00".into()))
-        );
-        assert_eq!(
-            migrated_publish_options(false, "09:00".into()),
-            ("draft".into(), None)
-        );
-    }
-}
-
 /// 确保「AI 日报」分类存在并返回其 id（被删除后会自动重建）
 pub async fn ensure_digest_category_id(db: &DatabaseConnection) -> anyhow::Result<i32> {
     let existing = categories::Entity::find()
@@ -291,4 +254,41 @@ async fn seed_sources(db: &DatabaseConnection) -> anyhow::Result<()> {
     }
     tracing::info!("seeded default news sources");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_digest_time_stays_within_day() {
+        assert_eq!(
+            migrated_digest_times("08:00"),
+            ("08:00".into(), "09:00".into())
+        );
+        assert_eq!(
+            migrated_digest_times("23:30"),
+            ("23:30".into(), "23:59".into())
+        );
+        assert_eq!(
+            migrated_digest_times("23:59"),
+            ("22:59".into(), "23:59".into())
+        );
+        assert_eq!(
+            migrated_digest_times("bad"),
+            ("08:00".into(), "09:00".into())
+        );
+    }
+
+    #[test]
+    fn legacy_auto_publish_controls_task_mode() {
+        assert_eq!(
+            migrated_publish_options(true, "09:00".into()),
+            ("scheduled".into(), Some("09:00".into()))
+        );
+        assert_eq!(
+            migrated_publish_options(false, "09:00".into()),
+            ("draft".into(), None)
+        );
+    }
 }

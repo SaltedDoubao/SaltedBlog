@@ -40,8 +40,7 @@ fn sanitize_rendered_html(html: &str) -> String {
     builder
         .add_tags(&extra_tags)
         .add_generic_attributes(&generic);
-    let cleaned = builder.clean(html).to_string();
-    cleaned
+    builder.clean(html).to_string()
 }
 
 /// 渲染 Markdown 为 HTML，同时提取 TOC（h2-h4）与纯文本

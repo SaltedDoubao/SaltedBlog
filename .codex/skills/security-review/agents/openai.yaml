@@ -1,0 +1,4 @@
+interface:
+  display_name: "安全变更审查"
+  short_description: "审查 SaltedBlog 认证、备份、上传、出站请求与秘密处理"
+  default_prompt: "Use $security-review to review this security-sensitive SaltedBlog change."

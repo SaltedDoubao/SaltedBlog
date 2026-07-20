@@ -1,0 +1,4 @@
+interface:
+  display_name: "变更校验"
+  short_description: "按变更路径执行 SaltedBlog 本地稳定性门禁"
+  default_prompt: "Use $change-validation to validate the current SaltedBlog changes before commit."

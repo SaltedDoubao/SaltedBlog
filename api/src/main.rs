@@ -75,7 +75,10 @@ async fn main() -> anyhow::Result<()> {
         news::seed::seed_defaults(&db).await?;
         rerender_stored_posts(&db).await?;
     } else {
-        let pending = Migrator::get_pending_migrations(&db).await?;
+        // SeaORM 的 pending 检查会执行 CREATE TABLE IF NOT EXISTS；生产业务角色
+        // 刻意没有 schema CREATE 权限，因此只用维护连接完成启动前检查。
+        let migration_db = Database::connect(&cfg.database_maintenance_url).await?;
+        let pending = Migrator::get_pending_migrations(&migration_db).await?;
         anyhow::ensure!(
             pending.is_empty(),
             "database has pending migrations; run salted-api migrate"

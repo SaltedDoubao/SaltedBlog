@@ -14,7 +14,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Validate release tag and version
+        shell: bash
+        run: |
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release tag must use vMAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_REF_NAME#v}" != "$(tr -d '[:space:]' < VERSION)" ]]; then
+            echo "release tag does not match VERSION" >&2
+            exit 1
+          fi
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+      - name: Check Rust formatting
+        run: cargo fmt --check
+        working-directory: api
+      - name: Run strict Rust lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        working-directory: api
       - name: Test Rust workspace
         run: cargo test --workspace --locked
         working-directory: api
@@ -25,6 +46,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Install web dependencies
         run: npm ci
+        working-directory: web
+      - name: Check Astro types
+        run: npm run check
         working-directory: web
       - name: Build Astro SSR application
         run: npm run build

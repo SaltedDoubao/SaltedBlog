@@ -225,7 +225,7 @@ fn is_fetch_due_minute(current: u32, start: u32, interval_hours: u32) -> bool {
         return false;
     }
     let step = interval_hours * 60;
-    (current - start) % step == 0
+    (current - start).is_multiple_of(step)
 }
 
 /// 每小时清理一次过期条目与日志，不受任务开关影响。

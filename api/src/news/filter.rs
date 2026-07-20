@@ -13,7 +13,7 @@ pub const REASON_INCLUDE_NOT_MATCHED: &str = "include_keyword_not_matched";
 /// 逗号（中英文）/分号/换行分隔的关键词列表
 pub fn parse_keywords(raw: Option<&str>) -> Vec<String> {
     raw.unwrap_or_default()
-        .split(|c| matches!(c, ',' | '，' | ';' | '；' | '\n'))
+        .split([',', '，', ';', '；', '\n'])
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
