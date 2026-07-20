@@ -472,8 +472,15 @@ fn clear_dir_contents(dir: &Path) -> ApiResult<()> {
 }
 
 fn safe_zip_path(name: &str) -> ApiResult<PathBuf> {
-    let path = Path::new(name);
-    if path.is_absolute() {
+    // ZIP archives use `/`, but archives created on Windows may contain `\\`.
+    // Normalize before validation so a Windows path cannot evade checks on Unix.
+    let normalized = name.replace('\\', "/");
+    let has_windows_drive_prefix = normalized
+        .as_bytes()
+        .get(..2)
+        .is_some_and(|prefix| prefix[0].is_ascii_alphabetic() && prefix[1] == b':');
+    let path = Path::new(&normalized);
+    if path.is_absolute() || has_windows_drive_prefix {
         return Err(ApiError::bad_request("zip entry has absolute path"));
     }
     for c in path.components() {
@@ -1110,9 +1117,11 @@ mod tests {
     #[test]
     fn zip_paths_reject_traversal_and_absolute_paths() {
         assert!(safe_zip_path("uploads/image.png").is_ok());
+        assert!(safe_zip_path("uploads\\image.png").is_ok());
         assert!(safe_zip_path("../secret").is_err());
         assert!(safe_zip_path("/etc/passwd").is_err());
         assert!(safe_zip_path("C:\\Windows\\system.ini").is_err());
+        assert!(safe_zip_path("\\\\server\\share\\secret").is_err());
     }
 
     #[test]
