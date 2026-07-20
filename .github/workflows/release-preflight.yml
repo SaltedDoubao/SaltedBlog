@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - VERSION
+      - .github/workflows/release-preflight.yml
 
 permissions:
   contents: read
@@ -32,7 +33,7 @@ jobs:
         shell: bash
         run: |
           args=(--skip-images)
-          if ! git cat-file -e "${{ github.event.before }}:VERSION" 2>/dev/null; then
+          if ! git cat-file -e 'HEAD^:VERSION' 2>/dev/null; then
             args+=(--bootstrap)
           fi
           python .codex/skills/release-preflight/scripts/release_preflight.py "${args[@]}"
