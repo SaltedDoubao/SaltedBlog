@@ -9,6 +9,7 @@ use std::process::Command;
 use chrono::Utc;
 use fs2::available_space;
 use hmac::{Hmac, Mac};
+use percent_encoding::percent_decode_str;
 use sea_orm::{ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -341,6 +342,13 @@ fn postgres_command_error(tool: &'static str, stderr: &str) -> ApiError {
     ApiError::internal_with_code(code, message, format!("{tool} failed: {stderr}"))
 }
 
+fn decode_postgres_url_userinfo(value: &str) -> ApiResult<String> {
+    percent_decode_str(value)
+        .decode_utf8()
+        .map(|value| value.into_owned())
+        .map_err(|_| ApiError::internal("invalid UTF-8 in postgres URL userinfo"))
+}
+
 fn dump_postgres(database_url: &str, dest: &Path) -> ApiResult<()> {
     if dest.exists() {
         let _ = fs::remove_file(dest);
@@ -348,6 +356,11 @@ fn dump_postgres(database_url: &str, dest: &Path) -> ApiResult<()> {
     let parsed =
         url::Url::parse(database_url).map_err(|_| ApiError::internal("invalid postgres URL"))?;
     let db_name = parsed.path().trim_start_matches('/');
+    let username = decode_postgres_url_userinfo(parsed.username())?;
+    let password = parsed
+        .password()
+        .map(decode_postgres_url_userinfo)
+        .transpose()?;
     let mut command = Command::new("pg_dump");
     command
         .arg("--host")
@@ -355,7 +368,7 @@ fn dump_postgres(database_url: &str, dest: &Path) -> ApiResult<()> {
         .arg("--port")
         .arg(parsed.port_or_known_default().unwrap_or(5432).to_string())
         .arg("--username")
-        .arg(parsed.username())
+        .arg(username)
         .arg("--dbname")
         .arg(db_name)
         .arg("--format=custom")
@@ -363,7 +376,7 @@ fn dump_postgres(database_url: &str, dest: &Path) -> ApiResult<()> {
         .arg("--no-acl")
         .arg("--file")
         .arg(dest);
-    if let Some(password) = parsed.password() {
+    if let Some(password) = password {
         command.env("PGPASSWORD", password);
     }
     let output = command.output().map_err(|e| {
@@ -388,6 +401,11 @@ fn restore_postgres(database_url: &str, dump_path: &Path) -> ApiResult<()> {
     let parsed =
         url::Url::parse(database_url).map_err(|_| ApiError::internal("invalid postgres URL"))?;
     let db_name = parsed.path().trim_start_matches('/');
+    let username = decode_postgres_url_userinfo(parsed.username())?;
+    let password = parsed
+        .password()
+        .map(decode_postgres_url_userinfo)
+        .transpose()?;
     let mut command = Command::new("pg_restore");
     command
         .arg("--host")
@@ -395,7 +413,7 @@ fn restore_postgres(database_url: &str, dump_path: &Path) -> ApiResult<()> {
         .arg("--port")
         .arg(parsed.port_or_known_default().unwrap_or(5432).to_string())
         .arg("--username")
-        .arg(parsed.username())
+        .arg(username)
         .arg("--dbname")
         .arg(db_name)
         .arg("--clean")
@@ -405,7 +423,7 @@ fn restore_postgres(database_url: &str, dump_path: &Path) -> ApiResult<()> {
         .arg("--single-transaction")
         .arg("--exit-on-error")
         .arg(dump_path);
-    if let Some(password) = parsed.password() {
+    if let Some(password) = password {
         command.env("PGPASSWORD", password);
     }
     let import = command.output().map_err(|e| {
@@ -1156,5 +1174,17 @@ mod tests {
 
         let storage = postgres_command_error("pg_dump", "No space left on device");
         assert_eq!(storage.code, ERROR_STORAGE_FAILED);
+    }
+
+    #[test]
+    fn decodes_percent_encoded_postgres_userinfo() {
+        assert_eq!(
+            decode_postgres_url_userinfo("salted%5Fowner").unwrap(),
+            "salted_owner"
+        );
+        assert_eq!(
+            decode_postgres_url_userinfo("p%2B%2F%3Dword%25").unwrap(),
+            "p+/=word%"
+        );
     }
 }

@@ -5,14 +5,14 @@
 - `postgres_superuser_password`
 - `postgres_owner_password`
 - `postgres_app_password`
-- `database_url`：`postgres://salted_app:<APP密码>@postgres:5432/saltedblog`
-- `database_maintenance_url`：`postgres://salted_owner:<OWNER密码>@postgres:5432/saltedblog`
+- `database_url`：`postgres://salted_app:<URL 编码后的 APP 密码>@postgres:5432/saltedblog`
+- `database_maintenance_url`：`postgres://salted_owner:<URL 编码后的 OWNER 密码>@postgres:5432/saltedblog`
 - `admin_password`：首次创建管理员使用，至少 15 个字符
 - `mfa_encryption_key`、`backup_signing_key`：分别生成的 32 字节随机值
 - `news_llm_api_key`：不使用 LLM 时创建空文件
 - `cloudflare_tunnel_token`：仅使用 `docker-compose.cloudflare.yml` 时需要，内容为 Cloudflare 控制台创建远程管理 Tunnel 后提供的令牌
 
-Linux/macOS 可用 `openssl rand -base64 32` 生成密码或密钥。设置目录权限：
+数据库密码推荐使用 `openssl rand -hex 24` 生成；若使用含 `+`、`/`、`=`、`@`、`:` 或 `%` 的密码，写入两个数据库 URL 文件前必须进行 URL 百分号编码（例如 `+` 为 `%2B`）。密钥可使用 `openssl rand -base64 32` 生成。设置目录权限：
 
 ```bash
 chmod 700 deploy/secrets

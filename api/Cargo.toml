@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "salted-api"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 [dependencies]
@@ -42,6 +42,7 @@ hmac = "0.12"
 sha1 = "0.10"
 data-encoding = "2"
 ipnet = "2"
+percent-encoding = "2"
 ammonia = "4"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "avif"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
