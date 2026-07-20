@@ -3,16 +3,37 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
 import { t, type Lang } from '@/i18n';
 
 const lang: Lang = Astro.url.pathname.startsWith('/en') ? 'en' : 'zh';
+const homeHref = lang === 'zh' ? '/' : '/en';
 ---
 
-<BaseLayout lang={lang} title="404" hasAlt={false}>
-  <section class="nf">
-    <div class="container nf__inner">
-      <div class="nf__code mono">ERROR / SIGNAL LOST</div>
-      <h1 class="nf__title">404</h1>
-      <p class="nf__desc">{t(lang, 'notfound.desc')}</p>
-      <a class="btn btn--primary btn--cut" href={lang === 'zh' ? '/' : '/en'}>
-        {t(lang, 'notfound.back')} ↘
+<BaseLayout
+  lang={lang}
+  title={t(lang, 'notfound.title')}
+  description={t(lang, 'notfound.desc')}
+  hasAlt={false}
+  showChrome={false}
+>
+  <section class="nf" aria-labelledby="error-title">
+    <p class="nf__background-word" aria-hidden="true">NO SIGNAL</p>
+
+    <div class="nf__content">
+      <p class="nf__eyebrow">404 / Page Not Found</p>
+      <div class="nf__signal-stage" id="signalStage">
+        <h1
+          class="nf__signal"
+          id="error-title"
+          data-text="NO SIGNAL"
+          aria-label="NO SIGNAL"
+        >
+          NO SIGNAL
+        </h1>
+        <canvas class="nf__signal-static" id="signalStatic" aria-hidden="true"></canvas>
+      </div>
+      <span class="nf__signal-noise" aria-hidden="true"></span>
+      <p class="nf__description">{t(lang, 'notfound.desc')}</p>
+      <a class="nf__back" href={homeHref}>
+        {t(lang, 'notfound.back')}
+        <span aria-hidden="true">↘</span>
       </a>
     </div>
   </section>
@@ -20,32 +41,505 @@ const lang: Lang = Astro.url.pathname.startsWith('/en') ? 'en' : 'zh';
 
 <style>
   .nf {
-    min-height: 62vh;
+    --nf-primary: #f4f600;
+    --nf-primary-hover: #e4e700;
+    --nf-black: #0b0d0f;
+    --nf-text: #f7f7f2;
+    --nf-text-muted: #969c9e;
+
+    position: relative;
+    min-height: 100svh;
     display: grid;
     place-items: center;
-    text-align: center;
+    isolation: isolate;
+    overflow: hidden;
+    padding: 48px 20px;
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      var(--nf-black);
+    background-size: 32px 32px;
+    color: var(--nf-text);
   }
 
-  .nf__code {
-    font-size: 11px;
-    color: var(--danger);
-    user-select: none;
+  .nf::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent 3px,
+      rgba(255, 255, 255, 0.012) 4px
+    );
   }
 
-  .nf__title {
-    margin: var(--space-2) 0 var(--space-4);
+  .nf__background-word {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: -2;
+    margin: 0;
+    color: rgba(255, 255, 255, 0.038);
     font-family: var(--font-display);
-    font-size: clamp(96px, 18vw, 200px);
-    line-height: 0.9;
-    font-weight: 700;
-    letter-spacing: -0.05em;
-    color: transparent;
-    -webkit-text-stroke: 2px var(--text);
+    font-size: clamp(96px, 16vw, 260px);
+    font-weight: 900;
+    line-height: 0.8;
+    letter-spacing: -0.065em;
+    white-space: nowrap;
+    transform: translate(-50%, -50%) scale(1.2);
+    pointer-events: none;
     user-select: none;
   }
 
-  .nf__desc {
-    margin: 0 0 var(--space-8);
-    color: var(--text-2);
+  .nf__background-word::after {
+    content: '';
+    position: absolute;
+    top: 55%;
+    right: 0;
+    left: 0;
+    height: 1px;
+    background: rgba(244, 246, 0, 0.1);
+  }
+
+  .nf__content {
+    width: min(100%, 960px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    transform: scale(0.8);
+    transform-origin: center;
+  }
+
+  .nf__eyebrow {
+    margin: 0 0 clamp(24px, 4vw, 40px);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--nf-text-muted);
+    font-family: var(--font-data);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .nf__eyebrow::before,
+  .nf__eyebrow::after {
+    content: '';
+    width: 28px;
+    height: 3px;
+    background: var(--nf-primary);
+  }
+
+  .nf__signal-stage {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    isolation: isolate;
+  }
+
+  .nf__signal-stage::after {
+    content: '';
+    position: absolute;
+    z-index: 4;
+    top: 53%;
+    left: -3%;
+    width: 106%;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--nf-primary) 22% 78%,
+      transparent
+    );
+    box-shadow: 0 0 10px rgba(244, 246, 0, 0.28);
+    opacity: 0.18;
+    transform: translateY(-50%);
+    animation: nf-scan-beam 3.8s linear infinite;
+    pointer-events: none;
+  }
+
+  .nf__signal {
+    position: relative;
+    z-index: 1;
+    width: max-content;
+    max-width: 100%;
+    margin: 0;
+    color: var(--nf-text);
+    font-family: var(--font-display);
+    font-size: clamp(62px, 11.8vw, 170px);
+    font-weight: 900;
+    line-height: 0.8;
+    letter-spacing: -0.065em;
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  .nf__signal::before,
+  .nf__signal::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .nf__signal::before {
+    z-index: -1;
+    color: var(--nf-primary);
+    clip-path: inset(55% 0 23% 0);
+    transform: translateX(0.055em);
+    animation: nf-glitch-yellow 4.4s steps(1, end) infinite;
+  }
+
+  .nf__signal::after {
+    color: var(--nf-text);
+    clip-path: inset(18% 0 68% 0);
+    transform: translateX(-0.035em);
+    opacity: 0.72;
+    animation: nf-glitch-white 4.4s steps(1, end) infinite;
+  }
+
+  .nf__signal-static {
+    position: absolute;
+    z-index: 3;
+    inset: -12%;
+    width: 124%;
+    height: 124%;
+    opacity: 0.62;
+    image-rendering: pixelated;
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
+  .nf__signal-stage.is-burst .nf__signal {
+    animation: nf-signal-jolt 150ms steps(2, end);
+  }
+
+  .nf__signal-stage.is-burst .nf__signal-static {
+    opacity: 0.94;
+  }
+
+  .nf__signal-stage.is-burst::after {
+    height: 3px;
+    opacity: 0.72;
+    transform: translateY(-50%) translateX(var(--burst-x, 0));
+  }
+
+  .nf__signal-noise {
+    width: min(76%, 680px);
+    height: 7px;
+    margin-top: clamp(18px, 3vw, 30px);
+    overflow: hidden;
+    background:
+      linear-gradient(90deg, var(--nf-primary) 0 12%, transparent 12% 16%),
+      repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.48) 0 2px,
+        transparent 2px 8px
+      );
+    clip-path: polygon(0 0, 91% 0, 91% 42%, 100% 42%, 100% 100%, 5% 100%, 5% 58%, 0 58%);
+    animation: nf-noise-shift 4.4s steps(1, end) infinite;
+  }
+
+  .nf__description {
+    max-width: 500px;
+    margin: clamp(32px, 5vw, 48px) 0 0;
+    color: var(--nf-text-muted);
+    font-size: 15px;
+    line-height: 1.75;
+  }
+
+  .nf__back {
+    min-width: 176px;
+    min-height: 50px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 28px;
+    margin-top: 30px;
+    padding: 0 22px;
+    border: 1px solid var(--nf-primary);
+    background: var(--nf-primary);
+    color: var(--nf-black);
+    font-size: 13px;
+    font-weight: 800;
+    text-decoration: none;
+    box-shadow: 5px 5px 0 var(--nf-text);
+    clip-path: polygon(
+      0 0,
+      calc(100% - 10px) 0,
+      100% 10px,
+      100% 100%,
+      10px 100%,
+      0 calc(100% - 10px)
+    );
+    transition:
+      transform 160ms var(--ease),
+      box-shadow 160ms var(--ease),
+      background-color 160ms var(--ease);
+  }
+
+  .nf__back:hover {
+    background: var(--nf-primary-hover);
+    transform: translate(-2px, -2px);
+    box-shadow: 7px 7px 0 var(--nf-text);
+  }
+
+  .nf__back span {
+    font-family: var(--font-data);
+    font-size: 18px;
+  }
+
+  @keyframes nf-glitch-yellow {
+    0%,
+    89%,
+    100% {
+      clip-path: inset(55% 0 23% 0);
+      transform: translateX(0.055em);
+    }
+    90% {
+      clip-path: inset(12% 0 73% 0);
+      transform: translateX(-0.04em);
+    }
+    93% {
+      clip-path: inset(76% 0 8% 0);
+      transform: translateX(0.08em);
+    }
+    96% {
+      clip-path: inset(43% 0 39% 0);
+      transform: translateX(-0.025em);
+    }
+  }
+
+  @keyframes nf-glitch-white {
+    0%,
+    90%,
+    100% {
+      clip-path: inset(18% 0 68% 0);
+      transform: translateX(-0.035em);
+    }
+    91% {
+      clip-path: inset(64% 0 22% 0);
+      transform: translateX(0.045em);
+    }
+    94% {
+      clip-path: inset(32% 0 51% 0);
+      transform: translateX(-0.065em);
+    }
+    97% {
+      clip-path: inset(82% 0 5% 0);
+      transform: translateX(0.03em);
+    }
+  }
+
+  @keyframes nf-noise-shift {
+    0%,
+    88%,
+    100% {
+      transform: translateX(0);
+      opacity: 0.8;
+    }
+    90% {
+      transform: translateX(5%);
+      opacity: 1;
+    }
+    94% {
+      transform: translateX(-3%);
+      opacity: 0.48;
+    }
+  }
+
+  @keyframes nf-scan-beam {
+    0% {
+      top: 18%;
+      opacity: 0;
+    }
+    14% {
+      opacity: 0.2;
+    }
+    84% {
+      opacity: 0.12;
+    }
+    100% {
+      top: 82%;
+      opacity: 0;
+    }
+  }
+
+  @keyframes nf-signal-jolt {
+    0% {
+      transform: translateX(0);
+    }
+    32% {
+      transform: translateX(var(--burst-x, 9px)) skewX(-1.5deg);
+    }
+    64% {
+      transform: translateX(calc(var(--burst-x, 9px) * -0.45));
+    }
+    100% {
+      transform: translateX(0);
+    }
+  }
+
+  @media (max-width: 560px) {
+    .nf {
+      padding: 40px 20px;
+    }
+
+    .nf__signal {
+      font-size: clamp(46px, 16vw, 76px);
+      letter-spacing: -0.075em;
+    }
+
+    .nf__signal-static {
+      inset: -18% -6%;
+      width: 112%;
+      height: 136%;
+    }
+
+    .nf__background-word {
+      font-size: clamp(70px, 24vw, 110px);
+      transform: translate(-50%, -50%) rotate(-90deg) scale(1.15);
+    }
+
+    .nf__signal-noise {
+      width: 86%;
+    }
+
+    .nf__description {
+      max-width: 320px;
+      font-size: 14px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nf *,
+    .nf *::before,
+    .nf *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+
+    .nf__signal-static {
+      display: none;
+    }
   }
 </style>
+
+<script>
+  const stage = document.querySelector<HTMLElement>('#signalStage');
+  const signal = document.querySelector<HTMLElement>('#error-title');
+  const canvas = document.querySelector<HTMLCanvasElement>('#signalStatic');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  if (stage && signal && canvas && !reducedMotion.matches) {
+    const context = canvas.getContext('2d', { alpha: true });
+
+    if (context) {
+      const signalText = signal.textContent?.trim() || 'NO SIGNAL';
+      let width = 1;
+      let height = 1;
+      let lastFrame = 0;
+      let animationFrame = 0;
+      let burstTimer = 0;
+      let burstEndTimer = 0;
+
+      const resizeCanvas = () => {
+        width = Math.max(1, Math.round(canvas.clientWidth));
+        height = Math.max(1, Math.round(canvas.clientHeight));
+        const scale = Math.min(window.devicePixelRatio || 1, 1.5);
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+        context.setTransform(scale, 0, 0, scale, 0, 0);
+      };
+
+      const drawNoise = (time: number) => {
+        animationFrame = window.requestAnimationFrame(drawNoise);
+        if (document.hidden || time - lastFrame < 68) return;
+        lastFrame = time;
+
+        const bursting = stage.classList.contains('is-burst');
+        context.clearRect(0, 0, width, height);
+        context.globalCompositeOperation = 'source-over';
+
+        const blocks = bursting ? 460 : 210;
+        for (let index = 0; index < blocks; index += 1) {
+          const x = Math.random() * width;
+          const y = Math.random() * height;
+          const blockWidth = bursting ? 2 + Math.random() * 22 : 1 + Math.random() * 8;
+          const blockHeight = Math.random() > 0.88 ? 2 : 1;
+          const yellow = Math.random() > (bursting ? 0.72 : 0.93);
+          const alpha = bursting ? 0.28 + Math.random() * 0.7 : 0.1 + Math.random() * 0.42;
+          context.fillStyle = yellow
+            ? `rgba(244, 246, 0, ${alpha})`
+            : `rgba(247, 247, 242, ${alpha})`;
+          context.fillRect(x, y, blockWidth, blockHeight);
+        }
+
+        const scanY = (time * 0.024) % height;
+        context.fillStyle = bursting
+          ? 'rgba(244, 246, 0, 0.9)'
+          : 'rgba(247, 247, 242, 0.22)';
+        context.fillRect(0, scanY, width, bursting ? 3 : 1);
+
+        if (bursting) {
+          for (let row = 0; row < 4; row += 1) {
+            const rowY = Math.random() * height;
+            context.fillStyle = `rgba(244, 246, 0, ${0.18 + Math.random() * 0.35})`;
+            context.fillRect(
+              Math.random() * width * 0.2,
+              rowY,
+              width * (0.5 + Math.random() * 0.5),
+              1 + Math.random() * 3,
+            );
+          }
+        }
+
+        const signalStyle = window.getComputedStyle(signal);
+        context.globalCompositeOperation = 'destination-in';
+        context.fillStyle = '#fff';
+        context.font = `${signalStyle.fontWeight} ${signalStyle.fontSize} ${signalStyle.fontFamily}`;
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.letterSpacing = signalStyle.letterSpacing;
+        context.fillText(signalText, width / 2, height / 2);
+        context.globalCompositeOperation = 'source-over';
+      };
+
+      const scheduleBurst = () => {
+        burstTimer = window.setTimeout(
+          () => {
+            const direction = Math.random() > 0.5 ? 1 : -1;
+            stage.style.setProperty('--burst-x', `${direction * (6 + Math.random() * 12)}px`);
+            stage.classList.add('is-burst');
+            burstEndTimer = window.setTimeout(() => stage.classList.remove('is-burst'), 150);
+            scheduleBurst();
+          },
+          2600 + Math.random() * 3200,
+        );
+      };
+
+      const resizeObserver = new ResizeObserver(resizeCanvas);
+      resizeObserver.observe(canvas);
+      resizeCanvas();
+      animationFrame = window.requestAnimationFrame(drawNoise);
+      scheduleBurst();
+
+      window.addEventListener(
+        'pagehide',
+        () => {
+          window.cancelAnimationFrame(animationFrame);
+          window.clearTimeout(burstTimer);
+          window.clearTimeout(burstEndTimer);
+          resizeObserver.disconnect();
+        },
+        { once: true },
+      );
+    }
+  }
+</script>

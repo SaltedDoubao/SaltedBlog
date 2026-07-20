@@ -19,6 +19,8 @@ interface Props {
   altPath?: string | null;
   /** 是否在另一语言存在对应页面（控制 hreflang 输出） */
   hasAlt?: boolean;
+  /** 是否显示站点页头与页脚；沉浸式错误页等场景可关闭 */
+  showChrome?: boolean;
   ogImage?: string | null;
   ogType?: string;
   /** 文章页传入 id 用于阅读量统计 */
@@ -32,6 +34,7 @@ const {
   description,
   altPath = null,
   hasAlt = true,
+  showChrome = true,
   ogImage = null,
   ogType = 'website',
   trackPostId,
@@ -139,18 +142,22 @@ const ogImageAbs = ogImage && siteUrl && ogImage.startsWith('/') ? `${siteUrl}${
     </script>
   </head>
   <body class:list={{ 'home-page': variant === 'home' }} data-post-id={trackPostId}>
-    <Header
-      lang={lang}
-      pathname={pathname}
-      altPath={resolvedAltPath}
-      siteTitle={siteTitle}
-      siteIconUrl={siteIconUrl || null}
-      variant={variant}
-    />
+    {
+      showChrome && (
+        <Header
+          lang={lang}
+          pathname={pathname}
+          altPath={resolvedAltPath}
+          siteTitle={siteTitle}
+          siteIconUrl={siteIconUrl || null}
+          variant={variant}
+        />
+      )
+    }
     <main>
       <slot />
     </main>
-    <Footer lang={lang} settings={settings} variant={variant} />
+    {showChrome && <Footer lang={lang} settings={settings} variant={variant} />}
 
     <script>
       // 访问统计上报（同访客同路径每日去重由服务端处理）
