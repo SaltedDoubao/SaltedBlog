@@ -4,7 +4,7 @@
 #   docker build -f deploy/Dockerfile.api .
 # ============================================
 
-FROM rust:1.96-slim AS builder
+FROM rust:1.96-bookworm-slim AS builder
 
 WORKDIR /build
 COPY api/ ./api/
