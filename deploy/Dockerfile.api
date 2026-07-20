@@ -4,14 +4,14 @@
 #   docker build -f deploy/Dockerfile.api .
 # ============================================
 
-FROM rust:1.96-bookworm-slim AS builder
+FROM rust:1.96-slim AS builder
 
 WORKDIR /build
 COPY api/ ./api/
 WORKDIR /build/api
 RUN cargo build --release --locked 2>/dev/null || cargo build --release
 
-FROM postgres:17-bookworm
+FROM postgres:17-trixie
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
