@@ -27,6 +27,10 @@ web/.astro/
 # rust
 api/target/
 
+# python
+__pycache__/
+*.py[cod]
+
 # misc
 *.log
 .DS_Store
