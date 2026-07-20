@@ -1,0 +1,4 @@
+interface:
+  display_name: "发布前自检"
+  short_description: "发布前验证版本、镜像、测试和标签状态"
+  default_prompt: "Use $release-preflight to validate this repository before creating a release tag."
