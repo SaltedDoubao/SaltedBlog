@@ -23,7 +23,8 @@ pub fn digest_title(task_name: &str, date: &str) -> String {
 }
 
 /// 生成（或强制重新生成）当日日报。
-/// `force=false`（定时路径）：当日已存在任务则跳过；`force=true`（手动路径）：新建任务并覆盖当日文章。
+/// `force=false`：当日存在运行中或成功任务时跳过；失败记录允许再次尝试。
+/// `force=true`（手动路径）：新建任务并覆盖当日文章。
 pub async fn generate(
     state: &AppState,
     task: &news_tasks::Model,
@@ -34,7 +35,6 @@ pub async fn generate(
     let _guard = digest_lock().lock().await;
 
     let db = state.db();
-    let settings = load_settings(&db).await?;
     let date = scheduled_date
         .map(str::to_string)
         .unwrap_or_else(|| local_date_string(state.cfg.stats_tz_offset_hours));
@@ -44,7 +44,11 @@ pub async fn generate(
             .filter(
                 Condition::all()
                     .add(digest_jobs::Column::DigestDate.eq(&date))
-                    .add(digest_jobs::Column::NewsTaskId.eq(task.id)),
+                    .add(digest_jobs::Column::NewsTaskId.eq(task.id))
+                    .add(
+                        digest_jobs::Column::Status
+                            .is_in([digest_jobs::STATUS_RUNNING, digest_jobs::STATUS_SUCCESS]),
+                    ),
             )
             .one(&db)
             .await?;
@@ -56,34 +60,48 @@ pub async fn generate(
         }
     }
 
-    let scheduled_publish_at =
-        if task.publish_mode.as_deref() == Some(news_tasks::PUBLISH_MODE_SCHEDULED) {
-            Some(
-                tasks::scheduled_utc(
-                    &date,
-                    task.publish_time
-                        .as_deref()
-                        .ok_or_else(|| anyhow::anyhow!("任务发布时间缺失"))?,
-                    state.cfg.stats_tz_offset_hours,
-                )
-                .ok_or_else(|| anyhow::anyhow!("任务发布时间无效"))?
-                .into(),
-            )
-        } else {
-            None
-        };
-    let job = digest_jobs::ActiveModel {
+    let mut job = digest_jobs::ActiveModel {
         digest_date: Set(date.clone()),
         trigger: Set(trigger.to_string()),
         status: Set(digest_jobs::STATUS_RUNNING.to_string()),
         started_at: Set(Utc::now().into()),
         news_task_id: Set(Some(task.id)),
         task_name: Set(Some(task.name.clone())),
-        scheduled_publish_at: Set(scheduled_publish_at),
+        scheduled_publish_at: Set(None),
         ..Default::default()
     }
     .insert(&db)
     .await?;
+
+    let setup = async {
+        let settings = load_settings(&db).await?;
+        let scheduled_publish_at =
+            if task.publish_mode.as_deref() == Some(news_tasks::PUBLISH_MODE_SCHEDULED) {
+                Some(
+                    tasks::scheduled_utc(
+                        &date,
+                        task.publish_time
+                            .as_deref()
+                            .ok_or_else(|| anyhow::anyhow!("任务发布时间缺失"))?,
+                        state.cfg.stats_tz_offset_hours,
+                    )
+                    .ok_or_else(|| anyhow::anyhow!("任务发布时间无效"))?,
+                )
+            } else {
+                None
+            };
+        anyhow::Ok((settings, scheduled_publish_at))
+    }
+    .await;
+    let (settings, scheduled_publish_at) = match setup {
+        Ok(value) => value,
+        Err(error) => return fail_job(&db, job, &date, error).await,
+    };
+    if let Some(scheduled_publish_at) = scheduled_publish_at {
+        let mut model: digest_jobs::ActiveModel = job.into();
+        model.scheduled_publish_at = Set(Some(scheduled_publish_at.into()));
+        job = model.update(&db).await?;
+    }
 
     match run_generation(state, &db, &settings, task, &date).await {
         Ok(outcome) => {
@@ -98,16 +116,56 @@ pub async fn generate(
             model.finished_at = Set(Some(Utc::now().into()));
             Ok(model.update(&db).await?)
         }
-        Err(e) => {
-            let message: String = e.to_string().chars().take(2000).collect();
-            let mut model: digest_jobs::ActiveModel = job.into();
-            model.status = Set(digest_jobs::STATUS_FAILED.to_string());
-            model.error_message = Set(Some(message.clone()));
-            model.finished_at = Set(Some(Utc::now().into()));
-            let saved = model.update(&db).await?;
-            tracing::warn!("digest generation failed for {date}: {message}");
-            Ok(saved)
-        }
+        Err(error) => fail_job(&db, job, &date, error).await,
+    }
+}
+
+async fn fail_job(
+    db: &DatabaseConnection,
+    job: digest_jobs::Model,
+    date: &str,
+    error: anyhow::Error,
+) -> anyhow::Result<digest_jobs::Model> {
+    let raw = error.to_string();
+    let message = safe_generation_failure(&raw).to_string();
+    let mut model: digest_jobs::ActiveModel = job.into();
+    model.status = Set(digest_jobs::STATUS_FAILED.to_string());
+    model.error_message = Set(Some(message.clone()));
+    model.finished_at = Set(Some(Utc::now().into()));
+    let saved = model.update(db).await?;
+    tracing::warn!(
+        job_id = saved.id,
+        date,
+        error_code = generation_error_code(&raw),
+        "digest generation failed"
+    );
+    Ok(saved)
+}
+
+fn generation_error_code(error: &str) -> &'static str {
+    if error.contains("LLM 未配置") {
+        "llm_not_configured"
+    } else if error.contains("没有候选情报") {
+        "no_candidates"
+    } else if error.contains("LLM 服务返回 HTTP") {
+        "llm_http_error"
+    } else if error.contains("response not json") || error.contains("无法解析为日报 JSON") {
+        "llm_output_invalid"
+    } else if error.contains("render digest post") {
+        "render_failed"
+    } else {
+        "internal_error"
+    }
+}
+
+fn safe_generation_failure(error: &str) -> &'static str {
+    match generation_error_code(error) {
+        "llm_not_configured" => "LLM 未配置，请检查后台模型设置和服务端密钥",
+        "no_candidates" => "时间窗内没有候选情报，请先确认信源已启用并完成采集",
+        "llm_http_error" => "LLM 服务请求失败",
+        "llm_output_invalid" => "LLM 输出无法解析为日报 JSON",
+        "render_failed" => "日报内容渲染失败",
+        _ => "日报生成内部错误",
     }
 }
 
@@ -151,10 +209,8 @@ async fn run_generation(
     })
     .await?;
 
-    let mut doc = llm::parse_digest_doc(&raw_output).ok_or_else(|| {
-        let head: String = raw_output.chars().take(300).collect();
-        anyhow::anyhow!("LLM 输出无法解析为日报 JSON：{head}")
-    })?;
+    let mut doc = llm::parse_digest_doc(&raw_output)
+        .ok_or_else(|| anyhow::anyhow!("LLM 输出无法解析为日报 JSON"))?;
     doc.date = date.to_string();
     doc.title = digest_title(&task.name, date);
 
@@ -594,5 +650,18 @@ mod tests {
             digest_title("AI Morning Brief", "2026-07-16"),
             "AI Morning Brief | 2026-07-16"
         );
+    }
+
+    #[test]
+    fn generation_failures_do_not_echo_upstream_content() {
+        let raw = "LLM 输出无法解析为日报 JSON：SECRET_SENTINEL";
+        assert_eq!(generation_error_code(raw), "llm_output_invalid");
+        let message = safe_generation_failure(raw);
+        assert_eq!(message, "LLM 输出无法解析为日报 JSON");
+        assert!(!message.contains("SECRET_SENTINEL"));
+
+        let raw = "LLM 服务返回 HTTP 502: SECRET_PROVIDER_BODY";
+        assert_eq!(safe_generation_failure(raw), "LLM 服务请求失败");
+        assert!(!safe_generation_failure(raw).contains("SECRET_PROVIDER_BODY"));
     }
 }

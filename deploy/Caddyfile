@@ -36,7 +36,9 @@
 
 	@backend path /api/* /uploads/* /healthz
 	handle @backend {
-		reverse_proxy api:8787
+		reverse_proxy api:8787 {
+			header_up X-Real-IP {client_ip}
+		}
 	}
 	handle {
 		reverse_proxy web:4321
@@ -62,7 +64,9 @@
 	handle @vpn {
 		@backend path /api/* /uploads/* /healthz
 		handle @backend {
-			reverse_proxy api:8787
+			reverse_proxy api:8787 {
+				header_up X-Real-IP {client_ip}
+			}
 		}
 		handle {
 			reverse_proxy web:4321

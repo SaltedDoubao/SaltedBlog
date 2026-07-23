@@ -6,7 +6,9 @@ use sea_orm::{
 };
 
 use crate::entities::{news_fetch_logs, news_items, news_sources};
+use crate::logging::{self, EventContext, NewEvent, CATEGORY_JOB};
 use crate::news::{fetcher, filter, normalize};
+use crate::state::AppState;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct FetchSummary {
@@ -21,24 +23,85 @@ pub struct FetchSummary {
 }
 
 /// 采集所有 enabled 信源；单源失败不影响其他源
-pub async fn fetch_all(db: &DatabaseConnection) -> Vec<FetchSummary> {
-    let sources = match news_sources::Entity::find()
+pub async fn fetch_all(db: &DatabaseConnection) -> Result<Vec<FetchSummary>, sea_orm::DbErr> {
+    let sources = news_sources::Entity::find()
         .filter(news_sources::Column::Enabled.eq(true))
         .order_by_asc(news_sources::Column::Id)
         .all(db)
-        .await
-    {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::error!("news fetch_all: load sources failed: {e}");
-            return Vec::new();
-        }
-    };
+        .await?;
     let mut summaries = Vec::with_capacity(sources.len());
     for source in &sources {
         summaries.push(fetch_source(db, source).await);
     }
-    summaries
+    Ok(summaries)
+}
+
+pub async fn record_summaries(
+    state: &AppState,
+    summaries: &[FetchSummary],
+    trigger: &str,
+    context: Option<&EventContext>,
+) {
+    for summary in summaries {
+        let failed = summary.status != news_fetch_logs::STATUS_SUCCESS;
+        let event = NewEvent {
+            category: CATEGORY_JOB,
+            level: if failed { "warn" } else { "info" },
+            event_type: "news.fetch.source".into(),
+            outcome: if failed { "failure" } else { "success" },
+            resource_type: Some("news_source".into()),
+            resource_id: Some(summary.source_id.to_string()),
+            summary: if failed {
+                "新闻信源采集未完全成功".into()
+            } else {
+                "新闻信源采集成功".into()
+            },
+            detail: Some(serde_json::json!({
+                "trigger": trigger,
+                "status": summary.status,
+                "fetched": summary.fetched,
+                "new": summary.new,
+                "duplicate": summary.duplicate,
+                "excluded": summary.excluded,
+                "error_code": failed.then_some("source_fetch_failed"),
+            })),
+            ..Default::default()
+        };
+        let event = if let Some(value) = context {
+            event.with_context(value)
+        } else {
+            event
+        };
+        logging::record(state, event).await;
+    }
+    let failed = summaries
+        .iter()
+        .filter(|summary| summary.status != news_fetch_logs::STATUS_SUCCESS)
+        .count();
+    let event = NewEvent {
+        category: CATEGORY_JOB,
+        level: if failed > 0 { "warn" } else { "info" },
+        event_type: "news.fetch.batch".into(),
+        outcome: if failed > 0 { "failure" } else { "success" },
+        resource_type: Some("news_fetch".into()),
+        summary: if failed > 0 {
+            "新闻批量采集部分失败".into()
+        } else {
+            "新闻批量采集完成".into()
+        },
+        detail: Some(serde_json::json!({
+            "trigger": trigger,
+            "sources": summaries.len(),
+            "failed_sources": failed,
+        })),
+        ..Default::default()
+    };
+    let event = if let Some(value) = context {
+        event.with_context(value)
+    } else {
+        event
+    };
+    logging::record(state, event).await;
 }
 
 /// 采集单个信源并写日志
@@ -60,10 +123,14 @@ pub async fn fetch_source(db: &DatabaseConnection, source: &news_sources::Model)
                 excluded_count += 1;
             }
             Ok(IngestResult::Duplicate) => duplicate_count += 1,
-            Err(e) => {
-                tracing::warn!("news ingest error (source {}): {e}", source.id);
+            Err(_) => {
+                tracing::warn!(
+                    source_id = source.id,
+                    error_code = "database_error",
+                    "news ingest failed"
+                );
                 if error.is_none() {
-                    error = Some(format!("db error: {e}"));
+                    error = Some("database write failed".into());
                 }
             }
         }
@@ -91,8 +158,11 @@ pub async fn fetch_source(db: &DatabaseConnection, source: &news_sources::Model)
         finished_at: Set(Some(Utc::now().into())),
         ..Default::default()
     };
-    if let Err(e) = log.insert(db).await {
-        tracing::error!("news fetch log insert failed: {e}");
+    if log.insert(db).await.is_err() {
+        tracing::error!(
+            error_code = "database_error",
+            "news fetch log insert failed"
+        );
     }
 
     FetchSummary {

@@ -2,7 +2,7 @@
 	http_port 8080
 	https_port 8443
 	servers {
-		trusted_proxies static {$UPSTREAM_PROXY_CIDRS:127.0.0.1/32}
+		trusted_proxies static {$UPSTREAM_PROXY_CIDRS:172.30.0.40/32}
 		trusted_proxies_strict
 	}
 }
@@ -37,7 +37,9 @@
 
 	@backend path /api/* /uploads/* /healthz
 	handle @backend {
-		reverse_proxy api:8787
+		reverse_proxy api:8787 {
+			header_up X-Real-IP {client_ip}
+		}
 	}
 	handle {
 		reverse_proxy web:4321
@@ -62,7 +64,9 @@ http://{$ADMIN_DOMAIN} {
 	handle @tunnel {
 		@backend path /api/* /uploads/* /healthz
 		handle @backend {
-			reverse_proxy api:8787
+			reverse_proxy api:8787 {
+				header_up X-Real-IP {client_ip}
+			}
 		}
 		handle {
 			reverse_proxy web:4321

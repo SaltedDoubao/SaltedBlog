@@ -1,14 +1,14 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Cursor;
 
-use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Extension, Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{routing::get, routing::put, Json, Router};
 use chrono::{Duration, FixedOffset, Utc};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set,
+    QuerySelect, Set, TransactionTrait,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 use crate::entities::{friends, page_views, posts, settings, site_icons, uploads};
 use crate::error::{ApiError, ApiResult};
+use crate::logging::{self, EventContext, NewEvent, CATEGORY_AUDIT};
 use crate::state::AppState;
 
 pub fn router(upload_max_mb: usize) -> Router<AppState> {
@@ -123,6 +124,7 @@ async fn get_settings(State(state): State<AppState>) -> ApiResult<impl IntoRespo
 
 async fn put_settings(
     State(state): State<AppState>,
+    Extension(event_ctx): Extension<EventContext>,
     Json(input): Json<HashMap<String, String>>,
 ) -> ApiResult<impl IntoResponse> {
     const ALLOWED: &[&str] = &[
@@ -168,7 +170,9 @@ async fn put_settings(
         "news_llm_model",
         "news_llm_extra_prompt",
     ];
-    for (key, value) in input {
+    let mut entries = input.into_iter().collect::<Vec<_>>();
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    for (key, value) in &entries {
         if !ALLOWED.contains(&key.as_str()) {
             return Err(ApiError::bad_request("unknown setting key"));
         }
@@ -207,24 +211,44 @@ async fn put_settings(
         {
             return Err(ApiError::bad_request("email setting is invalid"));
         }
-        let existing = settings::Entity::find_by_id(key.clone())
-            .one(&state.db())
-            .await?;
+    }
+    let db = state.db();
+    let txn = db.begin().await?;
+    for (key, value) in &entries {
+        let existing = settings::Entity::find_by_id(key.clone()).one(&txn).await?;
         match existing {
             Some(row) => {
                 let mut model: settings::ActiveModel = row.into();
-                model.value = Set(value);
-                model.update(&state.db()).await?;
+                model.value = Set(value.clone());
+                model.update(&txn).await?;
             }
             None => {
                 let model = settings::ActiveModel {
-                    key: Set(key),
-                    value: Set(value),
+                    key: Set(key.clone()),
+                    value: Set(value.clone()),
                 };
-                model.insert(&state.db()).await?;
+                model.insert(&txn).await?;
             }
         }
     }
+    txn.commit().await?;
+    logging::record(
+        &state,
+        NewEvent {
+            category: CATEGORY_AUDIT,
+            level: "info",
+            event_type: "settings.update".into(),
+            outcome: "success",
+            resource_type: Some("settings".into()),
+            summary: "站点设置已更新".into(),
+            detail: Some(json!({
+                "changed_keys": entries.iter().map(|(key, _)| key).collect::<Vec<_>>(),
+            })),
+            ..Default::default()
+        }
+        .with_context(&event_ctx),
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 

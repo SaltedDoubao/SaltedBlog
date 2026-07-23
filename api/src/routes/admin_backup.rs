@@ -6,6 +6,7 @@ use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use serde::Deserialize;
 use serde_json::json;
 use tokio::fs::File as TokioFile;
 use tokio::io::AsyncWriteExt;
@@ -14,8 +15,9 @@ use uuid::Uuid;
 
 use crate::auth::{require_step_up, AdminContext};
 use crate::backup;
+use crate::backup_scheduler;
 use crate::error::{ApiError, ApiResult};
-use crate::logging::{self, NewEvent, CATEGORY_BACKUP};
+use crate::logging::{self, EventContext, NewEvent, CATEGORY_BACKUP};
 use crate::state::{AppState, BackupJobStatus};
 
 pub fn router(backup_upload_max_mb: usize) -> Router<AppState> {
@@ -25,6 +27,10 @@ pub fn router(backup_upload_max_mb: usize) -> Router<AppState> {
     Router::new()
         .route("/backups", get(list_backups).post(create_backup_job))
         .route(
+            "/backups/auto-settings",
+            get(get_auto_settings).put(put_auto_settings),
+        )
+        .route(
             "/backups/upload",
             post(upload_backup).layer(DefaultBodyLimit::max(upload_limit)),
         )
@@ -32,6 +38,50 @@ pub fn router(backup_upload_max_mb: usize) -> Router<AppState> {
         .route("/backups/{name}/download", get(download_backup))
         .route("/backups/{name}/restore", post(restore_backup_job))
         .route("/backups/{name}", axum::routing::delete(delete_backup))
+}
+
+async fn get_auto_settings(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+    let config = backup_scheduler::load_settings(&state.db()).await?;
+    Ok(Json(json!({
+        "enabled": config.enabled,
+        "cron": config.cron,
+        "timezone_offset_hours": state.cfg.stats_tz_offset_hours,
+    })))
+}
+
+#[derive(Deserialize)]
+struct AutoSettingsInput {
+    enabled: bool,
+    cron: String,
+}
+
+async fn put_auto_settings(
+    State(state): State<AppState>,
+    Extension(event_ctx): Extension<EventContext>,
+    Json(input): Json<AutoSettingsInput>,
+) -> ApiResult<impl IntoResponse> {
+    let cron = backup_scheduler::save_settings(&state.db(), input.enabled, &input.cron).await?;
+    logging::record(
+        &state,
+        NewEvent {
+            category: CATEGORY_BACKUP,
+            level: "info",
+            event_type: "backup.schedule_updated".into(),
+            outcome: "success",
+            resource_type: Some("backup_schedule".into()),
+            resource_id: Some("automatic".into()),
+            summary: "自动备份计划已更新".into(),
+            detail: Some(json!({
+                "enabled": input.enabled,
+                "cron": cron,
+                "timezone_offset_hours": state.cfg.stats_tz_offset_hours,
+            })),
+            ..Default::default()
+        }
+        .with_context(&event_ctx),
+    )
+    .await;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn list_backups(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
@@ -52,8 +102,13 @@ async fn get_job(
     })))
 }
 
-fn spawn_job<F, Fut>(state: AppState, job_id: String, operation: &'static str, work: F)
-where
+fn spawn_job<F, Fut>(
+    state: AppState,
+    job_id: String,
+    operation: &'static str,
+    context: EventContext,
+    work: F,
+) where
     F: FnOnce(AppState) -> Fut + Send + 'static,
     Fut: std::future::Future<Output = ApiResult<Option<String>>> + Send,
 {
@@ -91,7 +146,8 @@ where
                             .as_ref()
                             .map(|backup_name| json!({ "backup_name": backup_name })),
                         ..Default::default()
-                    },
+                    }
+                    .with_context(&context),
                 )
                 .await;
                 state.set_job(
@@ -110,7 +166,6 @@ where
                     job_id = %job_id,
                     operation,
                     error_code = failure.code,
-                    error = %err,
                     "backup background job failed"
                 );
                 logging::record(
@@ -125,7 +180,8 @@ where
                         summary: format!("备份任务失败：{}", failure.message),
                         detail: Some(json!({ "error_code": failure.code })),
                         ..Default::default()
-                    },
+                    }
+                    .with_context(&context),
                 )
                 .await;
                 state.set_job(
@@ -142,7 +198,10 @@ where
     });
 }
 
-async fn create_backup_job(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+async fn create_backup_job(
+    State(state): State<AppState>,
+    Extension(context): Extension<EventContext>,
+) -> ApiResult<impl IntoResponse> {
     let job_id = Uuid::new_v4().to_string();
     state.set_job(
         &job_id,
@@ -153,16 +212,23 @@ async fn create_backup_job(State(state): State<AppState>) -> ApiResult<impl Into
             backup_name: None,
         },
     );
-    spawn_job(state, job_id.clone(), "backup.create", |state| async move {
-        let name = backup::create_backup(&state).await?;
-        Ok(Some(name))
-    });
+    spawn_job(
+        state,
+        job_id.clone(),
+        "backup.create",
+        context,
+        |state| async move {
+            let name = backup::create_backup(&state).await?;
+            Ok(Some(name))
+        },
+    );
     Ok(Json(json!({ "job_id": job_id })))
 }
 
 async fn restore_backup_job(
     State(state): State<AppState>,
     Extension(ctx): Extension<AdminContext>,
+    Extension(context): Extension<EventContext>,
     Path(name): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     require_step_up(&ctx)?;
@@ -188,6 +254,7 @@ async fn restore_backup_job(
         state,
         job_id.clone(),
         "backup.restore",
+        context,
         move |state| async move {
             backup::restore_backup(&state, &name_c).await?;
             Ok(Some(name_c))

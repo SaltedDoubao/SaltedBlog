@@ -1,5 +1,5 @@
 //! 后台情报管理：信源 CRUD、试抓、立即采集、条目审计、采集日志、日报任务
-use axum::extract::{Path, Query, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{
@@ -16,6 +16,7 @@ use serde_json::json;
 
 use crate::entities::{digest_jobs, news_fetch_logs, news_items, news_sources, news_tasks};
 use crate::error::{ApiError, ApiResult};
+use crate::logging::{self, EventContext, NewEvent, CATEGORY_JOB};
 use crate::news::{digest, fetch, fetcher, filter, local_date_string, tasks};
 use crate::state::AppState;
 
@@ -53,6 +54,7 @@ struct TaskInput {
     generation_time: Option<String>,
     publish_time: Option<String>,
     publish_mode: Option<String>,
+    retry_count: Option<i32>,
 }
 
 struct ValidatedTask {
@@ -64,6 +66,7 @@ struct ValidatedTask {
     generation_time: Option<String>,
     publish_time: Option<String>,
     publish_mode: Option<String>,
+    retry_count: i32,
 }
 
 fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
@@ -78,7 +81,7 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
         }
         Ok(value.to_string())
     };
-    let (start_time, interval_hours, generation_time, publish_time, publish_mode) =
+    let (start_time, interval_hours, generation_time, publish_time, publish_mode, retry_count) =
         match input.task_type.as_str() {
             news_tasks::TYPE_FETCH => {
                 if input
@@ -93,6 +96,7 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
                         .publish_mode
                         .as_deref()
                         .is_some_and(|value| !value.is_empty())
+                    || input.retry_count.is_some()
                 {
                     return Err(ApiError::bad_request("采集任务不能包含整理发布配置"));
                 }
@@ -106,6 +110,7 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
                     None,
                     None,
                     None,
+                    0,
                 )
             }
             news_tasks::TYPE_DIGEST => {
@@ -118,6 +123,10 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
                     return Err(ApiError::bad_request("整理发布任务不能包含采集配置"));
                 }
                 let generation = valid_time(&input.generation_time, "生成时间")?;
+                let retry_count = input.retry_count.unwrap_or(2);
+                if !(0..=5).contains(&retry_count) {
+                    return Err(ApiError::bad_request("重试次数应为 0-5"));
+                }
                 let mode = input.publish_mode.as_deref().unwrap_or("");
                 let publish = match mode {
                     news_tasks::PUBLISH_MODE_DRAFT => {
@@ -145,6 +154,7 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
                     Some(generation),
                     publish,
                     Some(mode.to_string()),
+                    retry_count,
                 )
             }
             _ => return Err(ApiError::bad_request("无效的任务类型")),
@@ -158,6 +168,7 @@ fn validate_task(input: &TaskInput) -> Result<ValidatedTask, ApiError> {
         generation_time,
         publish_time,
         publish_mode,
+        retry_count,
     })
 }
 
@@ -184,6 +195,7 @@ async fn create_task(
         generation_time: Set(task.generation_time),
         publish_time: Set(task.publish_time),
         publish_mode: Set(task.publish_mode),
+        retry_count: Set(task.retry_count),
         last_scheduled_at: Set(None),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
@@ -218,6 +230,7 @@ async fn update_task(
     model.generation_time = Set(task.generation_time);
     model.publish_time = Set(task.publish_time);
     model.publish_mode = Set(task.publish_mode);
+    model.retry_count = Set(task.retry_count);
     if schedule_changed {
         model.last_scheduled_at = Set(None);
     }
@@ -268,6 +281,7 @@ struct RunTaskInput {
 
 async fn run_task(
     State(state): State<AppState>,
+    Extension(event_ctx): Extension<EventContext>,
     Path(id): Path<i32>,
     input: Option<Json<RunTaskInput>>,
 ) -> ApiResult<impl IntoResponse> {
@@ -282,7 +296,11 @@ async fn run_task(
             .filter(
                 Condition::all()
                     .add(digest_jobs::Column::NewsTaskId.eq(task.id))
-                    .add(digest_jobs::Column::DigestDate.eq(date)),
+                    .add(digest_jobs::Column::DigestDate.eq(date))
+                    .add(
+                        digest_jobs::Column::Status
+                            .is_in([digest_jobs::STATUS_RUNNING, digest_jobs::STATUS_SUCCESS]),
+                    ),
             )
             .count(&state.db())
             .await?;
@@ -297,22 +315,105 @@ async fn run_task(
     let state_clone = state.clone();
     tokio::spawn(async move {
         if task_type == news_tasks::TYPE_FETCH {
-            let summaries = fetch::fetch_all(&state_clone.db()).await;
-            tracing::info!(
-                task_id = task.id,
-                sources = summaries.len(),
-                "manual fetch task finished"
-            );
-        } else if let Err(error) = digest::generate(
-            &state_clone,
-            &task,
-            digest_jobs::TRIGGER_MANUAL,
-            force,
-            None,
-        )
-        .await
-        {
-            tracing::warn!(task_id = task.id, "manual digest task rejected: {error}");
+            match fetch::fetch_all(&state_clone.db()).await {
+                Ok(summaries) => {
+                    fetch::record_summaries(&state_clone, &summaries, "manual", Some(&event_ctx))
+                        .await;
+                    tracing::info!(
+                        task_id = task.id,
+                        sources = summaries.len(),
+                        "manual fetch task finished"
+                    );
+                }
+                Err(_) => {
+                    tracing::error!(
+                        task_id = task.id,
+                        error_code = "database_error",
+                        "manual fetch task failed"
+                    );
+                    crate::logging::record(
+                        &state_clone,
+                        crate::logging::NewEvent {
+                            category: crate::logging::CATEGORY_JOB,
+                            level: "error",
+                            event_type: "news.fetch.batch".into(),
+                            outcome: "failure",
+                            resource_type: Some("news_task".into()),
+                            resource_id: Some(task.id.to_string()),
+                            summary: "新闻批量采集无法启动".into(),
+                            detail: Some(
+                                json!({ "trigger": "manual", "error_code": "database_error" }),
+                            ),
+                            ..Default::default()
+                        },
+                    )
+                    .await;
+                }
+            }
+        } else {
+            match digest::generate(
+                &state_clone,
+                &task,
+                digest_jobs::TRIGGER_MANUAL,
+                force,
+                None,
+            )
+            .await
+            {
+                Ok(job) => {
+                    let success = job.status == digest_jobs::STATUS_SUCCESS;
+                    logging::record(
+                        &state_clone,
+                        NewEvent {
+                            category: CATEGORY_JOB,
+                            level: if success { "info" } else { "error" },
+                            event_type: "news.digest.generate".into(),
+                            outcome: if success { "success" } else { "failure" },
+                            resource_type: Some("digest_job".into()),
+                            resource_id: Some(job.id.to_string()),
+                            summary: if success {
+                                "手动日报生成成功".into()
+                            } else {
+                                "手动日报生成失败".into()
+                            },
+                            detail: Some(json!({
+                                "task_id": task.id,
+                                "trigger": "manual",
+                                "error_code": (!success).then_some("generation_failed"),
+                            })),
+                            ..Default::default()
+                        }
+                        .with_context(&event_ctx),
+                    )
+                    .await;
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        task_id = task.id,
+                        error_code = "orchestration_error",
+                        "manual digest task rejected"
+                    );
+                    logging::record(
+                        &state_clone,
+                        NewEvent {
+                            category: CATEGORY_JOB,
+                            level: "error",
+                            event_type: "news.digest.generate".into(),
+                            outcome: "failure",
+                            resource_type: Some("news_task".into()),
+                            resource_id: Some(task.id.to_string()),
+                            summary: "手动日报生成无法启动".into(),
+                            detail: Some(json!({
+                                "trigger": "manual",
+                                "error_code": "orchestration_error",
+                            })),
+                            ..Default::default()
+                        }
+                        .with_context(&event_ctx),
+                    )
+                    .await;
+                }
+            }
         }
     });
     Ok((StatusCode::ACCEPTED, Json(json!({ "accepted": true }))))
@@ -501,6 +602,7 @@ async fn delete_source(
 /// 试抓：调用采集器返回前 5 条样本与关键词过滤预判，不写库
 async fn test_source(
     State(state): State<AppState>,
+    Extension(event_ctx): Extension<EventContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<impl IntoResponse> {
     let source = news_sources::Entity::find_by_id(id)
@@ -508,6 +610,31 @@ async fn test_source(
         .await?
         .ok_or_else(ApiError::not_found)?;
     let outcome = fetcher::fetch_source_items(&source).await;
+    let test_failed = outcome.error.is_some();
+    logging::record(
+        &state,
+        NewEvent {
+            category: CATEGORY_JOB,
+            level: if test_failed { "warn" } else { "info" },
+            event_type: "news.source.test_result".into(),
+            outcome: if test_failed { "failure" } else { "success" },
+            resource_type: Some("news_source".into()),
+            resource_id: Some(source.id.to_string()),
+            summary: if test_failed {
+                "新闻信源试抓失败".into()
+            } else {
+                "新闻信源试抓成功".into()
+            },
+            detail: Some(json!({
+                "item_count": outcome.items.len(),
+                "http_status": outcome.http_status,
+                "error_code": test_failed.then_some("source_fetch_failed"),
+            })),
+            ..Default::default()
+        }
+        .with_context(&event_ctx),
+    )
+    .await;
     let samples: Vec<serde_json::Value> = outcome
         .items
         .iter()
@@ -543,6 +670,7 @@ async fn test_source(
 
 async fn fetch_one(
     State(state): State<AppState>,
+    Extension(event_ctx): Extension<EventContext>,
     Path(id): Path<i32>,
 ) -> ApiResult<impl IntoResponse> {
     let source = news_sources::Entity::find_by_id(id)
@@ -550,11 +678,22 @@ async fn fetch_one(
         .await?
         .ok_or_else(ApiError::not_found)?;
     let summary = fetch::fetch_source(&state.db(), &source).await;
+    fetch::record_summaries(
+        &state,
+        std::slice::from_ref(&summary),
+        "manual",
+        Some(&event_ctx),
+    )
+    .await;
     Ok(Json(json!({ "summary": summary })))
 }
 
-async fn fetch_all_now(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
-    let summaries = fetch::fetch_all(&state.db()).await;
+async fn fetch_all_now(
+    State(state): State<AppState>,
+    Extension(event_ctx): Extension<EventContext>,
+) -> ApiResult<impl IntoResponse> {
+    let summaries = fetch::fetch_all(&state.db()).await?;
+    fetch::record_summaries(&state, &summaries, "manual", Some(&event_ctx)).await;
     Ok(Json(json!({ "summaries": summaries })))
 }
 
@@ -715,6 +854,7 @@ mod tests {
             generation_time: None,
             publish_time: None,
             publish_mode: None,
+            retry_count: None,
         };
         let task = validate_task(&input).unwrap();
         assert_eq!(task.start_time.as_deref(), Some("08:00"));
@@ -732,6 +872,7 @@ mod tests {
             generation_time: Some("20:00".into()),
             publish_time: Some("08:00".into()),
             publish_mode: Some(news_tasks::PUBLISH_MODE_SCHEDULED.into()),
+            retry_count: Some(2),
         };
         assert!(validate_task(&input).is_err());
     }
@@ -747,8 +888,26 @@ mod tests {
             generation_time: Some("08:00".into()),
             publish_time: None,
             publish_mode: Some(news_tasks::PUBLISH_MODE_DRAFT.into()),
+            retry_count: None,
         };
         let task = validate_task(&input).unwrap();
         assert!(task.publish_time.is_none());
+        assert_eq!(task.retry_count, 2);
+    }
+
+    #[test]
+    fn digest_retry_count_is_bounded() {
+        let input = TaskInput {
+            name: "日报".into(),
+            task_type: news_tasks::TYPE_DIGEST.into(),
+            enabled: Some(false),
+            start_time: None,
+            interval_hours: None,
+            generation_time: Some("08:00".into()),
+            publish_time: None,
+            publish_mode: Some(news_tasks::PUBLISH_MODE_DRAFT.into()),
+            retry_count: Some(6),
+        };
+        assert!(validate_task(&input).is_err());
     }
 }

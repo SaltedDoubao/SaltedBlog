@@ -13,6 +13,9 @@ pub struct ApiError {
     pub private_detail: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct SafeErrorCode(pub &'static str);
+
 impl std::fmt::Display for ApiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.private_detail.as_deref().unwrap_or(&self.message))
@@ -83,16 +86,16 @@ impl ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         if self.status.is_server_error() {
-            tracing::error!(
-                "api error: {}",
-                self.private_detail.as_deref().unwrap_or(&self.message)
-            );
+            tracing::error!(error_code = self.code, "API request failed");
         }
-        (
+        let code = self.code;
+        let mut response = (
             self.status,
             Json(json!({ "error": self.message, "code": self.code })),
         )
-            .into_response()
+            .into_response();
+        response.extensions_mut().insert(SafeErrorCode(code));
+        response
     }
 }
 

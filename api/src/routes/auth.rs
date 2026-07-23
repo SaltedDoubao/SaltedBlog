@@ -21,7 +21,7 @@ use crate::auth::{
 };
 use crate::entities::{mfa_recovery_codes, preauth_tokens, sessions, users};
 use crate::error::{ApiError, ApiResult};
-use crate::logging::{record, NewEvent, CATEGORY_AUTH, CATEGORY_SECURITY};
+use crate::logging::{record, EventContext, NewEvent, CATEGORY_AUTH, CATEGORY_SECURITY};
 use crate::state::AppState;
 
 pub fn public_router() -> Router<AppState> {
@@ -429,6 +429,7 @@ async fn mfa_verify(
 async fn logout(
     State(state): State<AppState>,
     Extension(ctx): Extension<AdminContext>,
+    Extension(event_ctx): Extension<EventContext>,
 ) -> ApiResult<impl IntoResponse> {
     sessions::Entity::delete_by_id(ctx.session_hash)
         .exec(&state.db())
@@ -444,7 +445,8 @@ async fn logout(
             actor_name: Some(ctx.username),
             summary: "管理员退出登录".into(),
             ..Default::default()
-        },
+        }
+        .with_context(&event_ctx),
     )
     .await;
     let cookie = auth_cookie(&state, "", 0, false);
@@ -476,6 +478,7 @@ async fn me(
 async fn step_up(
     State(state): State<AppState>,
     Extension(ctx): Extension<AdminContext>,
+    Extension(event_ctx): Extension<EventContext>,
     Json(input): Json<StepUpInput>,
 ) -> ApiResult<impl IntoResponse> {
     let user = users::Entity::find_by_id(ctx.user_id)
@@ -491,6 +494,20 @@ async fn step_up(
     let Some(step) = verify_totp(&secret, &input.code, user.last_totp_step)
         .filter(|_| verify_password(&input.password, &user.password_hash))
     else {
+        record(
+            &state,
+            NewEvent {
+                category: CATEGORY_AUTH,
+                level: "warn",
+                event_type: "auth.step_up_failed".into(),
+                outcome: "failure",
+                summary: "高危操作二次验证失败".into(),
+                detail: Some(json!({ "error_code": "invalid_credentials" })),
+                ..Default::default()
+            }
+            .with_context(&event_ctx),
+        )
+        .await;
         return Err(ApiError::unauthorized());
     };
     let mut user_model: users::ActiveModel = user.clone().into();
@@ -515,7 +532,8 @@ async fn step_up(
             actor_name: Some(user.username),
             summary: "高危操作二次验证成功".into(),
             ..Default::default()
-        },
+        }
+        .with_context(&event_ctx),
     )
     .await;
     Ok(Json(json!({ "elevated_until": until })))
@@ -524,9 +542,26 @@ async fn step_up(
 async fn change_password(
     State(state): State<AppState>,
     Extension(ctx): Extension<AdminContext>,
+    Extension(event_ctx): Extension<EventContext>,
     Json(input): Json<ChangePasswordInput>,
 ) -> ApiResult<impl IntoResponse> {
-    require_step_up(&ctx)?;
+    if let Err(error) = require_step_up(&ctx) {
+        record(
+            &state,
+            NewEvent {
+                category: CATEGORY_SECURITY,
+                level: "warn",
+                event_type: "auth.step_up_required".into(),
+                outcome: "blocked",
+                summary: "密码修改因缺少近期二次验证被拦截".into(),
+                detail: Some(json!({ "error_code": error.code })),
+                ..Default::default()
+            }
+            .with_context(&event_ctx),
+        )
+        .await;
+        return Err(error);
+    }
     if input.new_password.chars().count() < 12 || input.new_password.len() > 256 {
         return Err(ApiError::bad_request("new password must be 12-256 bytes"));
     }
@@ -535,6 +570,20 @@ async fn change_password(
         .await?
         .ok_or_else(ApiError::unauthorized)?;
     if !verify_password(&input.current_password, &user.password_hash) {
+        record(
+            &state,
+            NewEvent {
+                category: CATEGORY_SECURITY,
+                level: "warn",
+                event_type: "auth.password_change_failed".into(),
+                outcome: "failure",
+                summary: "管理员密码修改验证失败".into(),
+                detail: Some(json!({ "error_code": "invalid_credentials" })),
+                ..Default::default()
+            }
+            .with_context(&event_ctx),
+        )
+        .await;
         return Err(ApiError::unauthorized());
     }
     let mut model: users::ActiveModel = user.into();
@@ -546,14 +595,44 @@ async fn change_password(
         .filter(sessions::Column::Id.ne(ctx.session_hash))
         .exec(&state.db())
         .await?;
+    record(
+        &state,
+        NewEvent {
+            category: CATEGORY_SECURITY,
+            level: "warn",
+            event_type: "auth.password_changed".into(),
+            outcome: "success",
+            summary: "管理员密码已修改，其他会话已撤销".into(),
+            ..Default::default()
+        }
+        .with_context(&event_ctx),
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
 async fn regenerate_recovery_codes(
     State(state): State<AppState>,
     Extension(ctx): Extension<AdminContext>,
+    Extension(event_ctx): Extension<EventContext>,
 ) -> ApiResult<impl IntoResponse> {
-    require_step_up(&ctx)?;
+    if let Err(error) = require_step_up(&ctx) {
+        record(
+            &state,
+            NewEvent {
+                category: CATEGORY_SECURITY,
+                level: "warn",
+                event_type: "auth.step_up_required".into(),
+                outcome: "blocked",
+                summary: "恢复码重生成因缺少近期二次验证被拦截".into(),
+                detail: Some(json!({ "error_code": error.code })),
+                ..Default::default()
+            }
+            .with_context(&event_ctx),
+        )
+        .await;
+        return Err(error);
+    }
     let now = Utc::now();
     mfa_recovery_codes::Entity::delete_many()
         .filter(mfa_recovery_codes::Column::UserId.eq(ctx.user_id))
@@ -582,7 +661,8 @@ async fn regenerate_recovery_codes(
             actor_name: Some(ctx.username),
             summary: "管理员重新生成了 MFA 恢复码".into(),
             ..Default::default()
-        },
+        }
+        .with_context(&event_ctx),
     )
     .await;
     Ok(Json(json!({ "recovery_codes": codes })))

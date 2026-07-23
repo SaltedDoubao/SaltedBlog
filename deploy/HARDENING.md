@@ -6,7 +6,7 @@
 2. `ADMIN_DOMAIN` 使用私有 DNS 指向 VPN 地址，必须绕过公网外层代理。`ADMIN_ALLOWED_CIDRS` 必须填写实际 VPN 客户端网段；Caddy 仅接受这些来源并使用内部 CA HTTPS。
 3. 将 Caddy 内部 CA 根证书安全安装到管理设备。根证书位于 `caddy_data` 卷，禁止公开下载。
 4. 宿主机防火墙只开放公网 80/443、VPN 端口和受限来源的 SSH；SSH 禁止 root/密码登录。
-5. `UPSTREAM_PROXY_CIDRS` 填写外层代理的精确 CIDR；`UPSTREAM_PROXY_CIDRS` 与 `ADMIN_ALLOWED_CIDRS` 均不得使用 `0.0.0.0/0`。API 只信任固定地址 `172.30.0.10/32` 上的 Caddy。
+5. `UPSTREAM_PROXY_CIDRS` 填写外层代理的精确 CIDR；Cloudflare Compose 模式固定为 cloudflared 的 `172.30.0.40/32`。`UPSTREAM_PROXY_CIDRS` 与 `ADMIN_ALLOWED_CIDRS` 均不得使用 `0.0.0.0/0`。Caddy 覆盖传给 API 的 `X-Real-IP`，API 只接受固定地址 `172.30.0.10/32` 上的 Caddy 所提供的客户端地址。
 
 ## 首次部署与升级
 

@@ -1,5 +1,6 @@
 mod auth;
 mod backup;
+mod backup_scheduler;
 mod config;
 mod entities;
 mod error;
@@ -128,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     logging::spawn_writer(state.clone()).await;
+    backup_scheduler::spawn(state.clone());
     news::scheduler::spawn(state.clone());
     logging::spawn_cleanup(state.clone());
 
@@ -283,6 +285,9 @@ async fn seed_settings(db: &sea_orm::DatabaseConnection) -> anyhow::Result<()> {
         ("news_llm_extra_prompt", ""),
         ("news_retention_days", "30"),
         ("news_log_retention_days", "7"),
+        ("backup_auto_enabled", "false"),
+        ("backup_auto_cron", "0 0 * * *"),
+        ("backup_auto_last_scheduled_at", ""),
     ];
     for (key, value) in defaults {
         let existing = entities::settings::Entity::find_by_id((*key).to_string())

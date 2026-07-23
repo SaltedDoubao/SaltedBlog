@@ -151,8 +151,7 @@ pub async fn chat(req: &LlmRequest<'_>) -> anyhow::Result<String> {
     )
     .await?;
     if !status.is_success() {
-        let brief: String = text.chars().take(500).collect();
-        anyhow::bail!("llm http {status}: {brief}");
+        anyhow::bail!("LLM 服务返回 HTTP {status}");
     }
     let value: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| anyhow::anyhow!("llm response not json: {e}"))?;

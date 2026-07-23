@@ -37,7 +37,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
       </div>
       <p class="news-hint">
         API Key 通过服务端环境变量 <code>NEWS_LLM_API_KEY</code> 配置（不落库），修改后需重启 API。
-        定时生成失败的日期不会自动重试，可在下方执行记录确认后从任务列表强制执行。
+        定时生成失败会按任务配置自动重试；每次尝试都会保留独立执行记录。
       </p>
     </div>
   </div>
@@ -82,6 +82,10 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
         <div class="form-field">
           <label class="label">生成时间（HH:MM，站点时区）</label>
           <input class="input" data-task-field="generation_time" type="time" step="60" value="08:00" />
+        </div>
+        <div class="form-field">
+          <label class="label">失败重试次数（额外尝试）</label>
+          <input class="input" data-task-field="retry_count" type="number" min="0" max="5" value="2" />
         </div>
         <div class="form-field">
           <label class="label">生成后处理</label>
@@ -433,6 +437,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     generation_time: string | null;
     publish_time: string | null;
     publish_mode: 'draft' | 'scheduled' | null;
+    retry_count: number;
     last_scheduled_at: string | null;
   }
 
@@ -574,6 +579,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     taskField('generation_time').value = row?.generation_time ?? '08:00';
     taskField('publish_time').value = row?.publish_time ?? '09:00';
     taskField('publish_mode').value = row?.publish_mode ?? 'scheduled';
+    taskField('retry_count').value = String(row?.retry_count ?? 2);
     syncTaskFields();
     taskForm.hidden = false;
     taskField('name').focus();
@@ -593,6 +599,7 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
           ? taskField('publish_time').value
           : null,
       publish_mode: taskType === 'digest' ? taskField('publish_mode').value : null,
+      retry_count: taskType === 'digest' ? Number(taskField('retry_count').value) : null,
     };
   }
 
@@ -615,8 +622,8 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
           task.task_type === 'fetch'
             ? `${task.start_time ?? '—'} 起，每 ${task.interval_hours ?? '—'} 小时`
             : task.publish_mode === 'draft'
-              ? `${task.generation_time ?? '—'} 生成后保存草稿`
-              : `${task.generation_time ?? '—'} 生成 / ${task.publish_time ?? '—'} 发布`;
+              ? `${task.generation_time ?? '—'} 生成后保存草稿 / 失败重试 ${task.retry_count} 次`
+              : `${task.generation_time ?? '—'} 生成 / ${task.publish_time ?? '—'} 发布 / 失败重试 ${task.retry_count} 次`;
         return `<tr>
           <td class="mono">${task.id}</td>
           <td style="font-weight:600">${escapeHtml(task.name)}</td>
@@ -717,6 +724,13 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
       payload.publish_time! <= payload.generation_time!
     ) {
       toast('发布时间必须晚于当天生成时间', 'error');
+      return;
+    }
+    if (
+      payload.task_type === 'digest' &&
+      (!Number.isInteger(payload.retry_count) || payload.retry_count! < 0 || payload.retry_count! > 5)
+    ) {
+      toast('失败重试次数应为 0-5', 'error');
       return;
     }
     try {

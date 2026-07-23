@@ -86,7 +86,7 @@ npm run dev
 服务器要求：Docker 24+，域名已解析到服务器（Caddy 自动申请 HTTPS 证书）。
 
 ```bash
-git clone <repo> /opt/SaltedBlog && cd /opt/SaltedBlog
+git clone https://github.com/SaltedDoubao/SaltedBlog.git && cd SaltedBlog
 cp deploy/.env.example deploy/.env
 # 按 deploy/secrets/README.md 创建生产密钥，并配置域名、CIDR 与已发布版本
 # SALTEDBLOG_IMAGE_TAG=v0.1.5
@@ -115,13 +115,15 @@ docker compose --project-directory ./deploy --env-file ./deploy/.env \
 
 登录 `/admin/backup` 可生成备份、上传本机 zip、下载、恢复、删除。恢复前会自动再生成一份当前状态的安全备份。默认保留最近 7 份（`BACKUP_KEEP`）。
 
+日志中心提供内置自动备份计划：默认关闭，默认 Cron 为 `0 0 * * *`（按 `STATS_TZ_OFFSET_HOURS` 每天零点执行）。仅接受Cron表达式，分钟字段必须是单个 `0-59` 数字，因此最短执行间隔为一小时。自动、手动及恢复前安全备份共享 `BACKUP_KEEP` 保留池。
+
 ### 命令行脚本
 
 ```bash
 ./scripts/backup.sh              # 调用应用生成带签名的 v2 备份
 ```
 
-定时备份（crontab）：`0 3 * * * cd /opt/SaltedBlog && ./scripts/backup.sh >> backups/backup.log 2>&1`
+也可继续使用系统 crontab 调用脚本：`0 3 * * * cd /opt/SaltedBlog && ./scripts/backup.sh >> backups/backup.log 2>&1`
 
 zip 内部结构：
 

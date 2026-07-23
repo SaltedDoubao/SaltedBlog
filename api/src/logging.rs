@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use axum::extract::{MatchedPath, Request, State};
@@ -11,6 +12,7 @@ use uuid::Uuid;
 
 use crate::auth::{client_ip, AdminContext};
 use crate::entities::{event_logs, page_views};
+use crate::error::SafeErrorCode;
 use crate::state::AppState;
 
 pub const CATEGORY_AUTH: &str = "auth";
@@ -23,6 +25,14 @@ pub const CATEGORY_BACKUP: &str = "backup";
 
 #[derive(Clone, Debug)]
 pub struct RequestId(pub String);
+
+#[derive(Clone, Debug, Default)]
+pub struct EventContext {
+    pub actor_user_id: Option<i32>,
+    pub actor_name: Option<String>,
+    pub source_ip: Option<String>,
+    pub request_id: Option<String>,
+}
 
 #[derive(Default, Debug)]
 pub struct NewEvent {
@@ -44,11 +54,62 @@ pub struct NewEvent {
     pub detail: Option<Value>,
 }
 
+impl NewEvent {
+    pub fn with_context(mut self, context: &EventContext) -> Self {
+        self.actor_user_id = context.actor_user_id;
+        self.actor_name.clone_from(&context.actor_name);
+        self.source_ip.clone_from(&context.source_ip);
+        self.request_id.clone_from(&context.request_id);
+        self
+    }
+}
+
+static LOG_WRITE_FAILURES: AtomicU64 = AtomicU64::new(0);
+static LOG_QUEUE_DROPS: AtomicU64 = AtomicU64::new(0);
+
 fn clean(input: String, max: usize) -> String {
     input.replace(['\r', '\n'], " ").chars().take(max).collect()
 }
 
-fn into_model(event: NewEvent) -> event_logs::ActiveModel {
+fn sensitive_detail_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    [
+        "authorization",
+        "cookie",
+        "csrf",
+        "password",
+        "totp",
+        "recovery_code",
+        "database_url",
+        "api_key",
+        "secret",
+        "prompt",
+        "raw_output",
+    ]
+    .iter()
+    .any(|marker| key.contains(marker))
+}
+
+fn sanitize_detail(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            for (key, value) in map {
+                if sensitive_detail_key(key) {
+                    *value = Value::String("[REDACTED]".into());
+                } else {
+                    sanitize_detail(value);
+                }
+            }
+        }
+        Value::Array(values) => values.iter_mut().for_each(sanitize_detail),
+        _ => {}
+    }
+}
+
+fn into_model(mut event: NewEvent) -> event_logs::ActiveModel {
+    if let Some(detail) = event.detail.as_mut() {
+        sanitize_detail(detail);
+    }
     event_logs::ActiveModel {
         occurred_at: Set(Utc::now().into()),
         category: Set(event.category.to_string()),
@@ -81,16 +142,55 @@ fn is_priority(event: &NewEvent) -> bool {
     ) || matches!(event.level, "error" | "critical")
 }
 
+async fn record_recovery(state: &AppState) {
+    let write_failures = LOG_WRITE_FAILURES.swap(0, Ordering::AcqRel);
+    let queue_drops = LOG_QUEUE_DROPS.swap(0, Ordering::AcqRel);
+    if write_failures == 0 && queue_drops == 0 {
+        return;
+    }
+    let event = NewEvent {
+        category: CATEGORY_SYSTEM,
+        level: "warn",
+        event_type: "logging.recovered".into(),
+        outcome: "success",
+        summary: "日志写入通道已恢复".into(),
+        detail: Some(serde_json::json!({
+            "write_failures": write_failures,
+            "queue_drops": queue_drops,
+        })),
+        ..Default::default()
+    };
+    if into_model(event).insert(&state.db()).await.is_err() {
+        LOG_WRITE_FAILURES.fetch_add(write_failures + 1, Ordering::Relaxed);
+        LOG_QUEUE_DROPS.fetch_add(queue_drops, Ordering::Relaxed);
+        tracing::error!(
+            error_code = "database_error",
+            "logging recovery event insert failed"
+        );
+    }
+}
+
 pub async fn record(state: &AppState, event: NewEvent) {
     if is_priority(&event) {
-        if let Err(err) = into_model(event).insert(&state.db()).await {
-            tracing::error!(error = %err, "priority event log insert failed");
+        if into_model(event).insert(&state.db()).await.is_err() {
+            LOG_WRITE_FAILURES.fetch_add(1, Ordering::Relaxed);
+            tracing::error!(
+                error_code = "database_error",
+                "priority event log insert failed"
+            );
+        } else {
+            record_recovery(state).await;
         }
         return;
     }
-    let fallback = format!("{}: {}", event.event_type, event.summary);
-    if let Err(err) = state.log_tx.try_send(event) {
-        tracing::error!(error = %err, event = %clean(fallback, 600), "event log queue unavailable");
+    let event_type = clean(event.event_type.clone(), 96);
+    if state.log_tx.try_send(event).is_err() {
+        LOG_QUEUE_DROPS.fetch_add(1, Ordering::Relaxed);
+        tracing::error!(
+            event_type,
+            error_code = "queue_unavailable",
+            "event log queue unavailable"
+        );
     }
 }
 
@@ -114,11 +214,18 @@ pub async fn spawn_writer(state: AppState) {
                 }
             }
             let models = batch.into_iter().map(into_model).collect::<Vec<_>>();
-            if let Err(err) = event_logs::Entity::insert_many(models)
+            if event_logs::Entity::insert_many(models)
                 .exec(&state.db())
                 .await
+                .is_err()
             {
-                tracing::error!(error = %err, "batched event log insert failed");
+                LOG_WRITE_FAILURES.fetch_add(1, Ordering::Relaxed);
+                tracing::error!(
+                    error_code = "database_error",
+                    "batched event log insert failed"
+                );
+            } else {
+                record_recovery(&state).await;
             }
         }
     });
@@ -146,7 +253,9 @@ pub async fn admin_request_log(
         .get::<MatchedPath>()
         .map(|v| v.as_str().to_string())
         .unwrap_or_else(|| request.uri().path().to_string());
+    let path = request.uri().path().to_string();
     let ctx = request.extensions().get::<AdminContext>().cloned();
+    let event_context = request.extensions().get::<EventContext>().cloned();
     let request_id = request.extensions().get::<RequestId>().map(|v| v.0.clone());
     let addr = request
         .extensions()
@@ -155,7 +264,17 @@ pub async fn admin_request_log(
     let ip = client_ip(request.headers(), addr, &state.cfg).to_string();
     let response = next.run(request).await;
     let status = response.status();
-    if method != Method::GET || status.is_client_error() || status.is_server_error() {
+    let safe_error_code = response
+        .extensions()
+        .get::<SafeErrorCode>()
+        .map(|value| value.0);
+    let sensitive_get = method == Method::GET
+        && (route.ends_with("/logs/export") || route.ends_with("/backups/{name}/download"));
+    if method != Method::GET
+        || status.is_client_error()
+        || status.is_server_error()
+        || sensitive_get
+    {
         let category = if method == Method::GET {
             CATEGORY_ACCESS
         } else {
@@ -188,11 +307,125 @@ pub async fn admin_request_log(
             status_code: Some(status.as_u16() as i32),
             duration_ms: Some(started.elapsed().as_millis() as i64),
             summary: format!("{} {} -> {}", method, route, status.as_u16()),
+            detail: safe_error_code.map(|code| serde_json::json!({ "error_code": code })),
             ..Default::default()
         };
         record(&state, event).await;
     }
+    if let Some((event_type, resource_type)) = semantic_admin_event(&method, &route) {
+        let outcome = if status.is_success() {
+            "success"
+        } else if status.is_client_error() {
+            "blocked"
+        } else {
+            "failure"
+        };
+        let mut detail = serde_json::Map::new();
+        if let Some(code) = safe_error_code {
+            detail.insert("error_code".into(), serde_json::json!(code));
+        }
+        let event = NewEvent {
+            category: if event_type.starts_with("backup.") {
+                CATEGORY_BACKUP
+            } else {
+                CATEGORY_AUDIT
+            },
+            level: if status.is_server_error() {
+                "error"
+            } else if status.is_client_error() {
+                "warn"
+            } else {
+                "info"
+            },
+            event_type: event_type.into(),
+            outcome,
+            method: Some(method.to_string()),
+            route: Some(route.clone()),
+            status_code: Some(status.as_u16() as i32),
+            duration_ms: Some(started.elapsed().as_millis() as i64),
+            resource_type: Some(resource_type.into()),
+            resource_id: resource_id_from_path(&route, &path),
+            summary: format!(
+                "后台操作 {}",
+                if status.is_success() {
+                    "成功"
+                } else {
+                    "未完成"
+                }
+            ),
+            detail: (!detail.is_empty()).then_some(serde_json::Value::Object(detail)),
+            ..Default::default()
+        };
+        let event = if let Some(context) = event_context.as_ref() {
+            event.with_context(context)
+        } else {
+            event
+        };
+        record(&state, event).await;
+    }
     response
+}
+
+fn semantic_admin_event(method: &Method, route: &str) -> Option<(&'static str, &'static str)> {
+    let route = route.strip_prefix("/api/admin").unwrap_or(route);
+    match (method, route) {
+        (&Method::POST, "/posts") => Some(("content.post.create", "post")),
+        (&Method::PUT, "/posts/{id}") => Some(("content.post.update", "post")),
+        (&Method::DELETE, "/posts/{id}") => Some(("content.post.delete", "post")),
+        (&Method::POST, "/categories") => Some(("content.category.create", "category")),
+        (&Method::PUT, "/categories/{id}") => Some(("content.category.update", "category")),
+        (&Method::DELETE, "/categories/{id}") => Some(("content.category.delete", "category")),
+        (&Method::POST, "/tags") => Some(("content.tag.create", "tag")),
+        (&Method::PUT, "/tags/{id}") => Some(("content.tag.update", "tag")),
+        (&Method::DELETE, "/tags/{id}") => Some(("content.tag.delete", "tag")),
+        (&Method::POST, "/series") => Some(("content.series.create", "series")),
+        (&Method::PUT, "/series/{id}") => Some(("content.series.update", "series")),
+        (&Method::DELETE, "/series/{id}") => Some(("content.series.delete", "series")),
+        (&Method::POST, "/friends") => Some(("content.friend.create", "friend")),
+        (&Method::PUT, "/friends/{id}") => Some(("content.friend.update", "friend")),
+        (&Method::DELETE, "/friends/{id}") => Some(("content.friend.delete", "friend")),
+        (&Method::POST, "/uploads") => Some(("media.upload.create", "upload")),
+        (&Method::DELETE, "/uploads/{id}") => Some(("media.upload.delete", "upload")),
+        (&Method::POST, "/site-icons") => Some(("media.site_icon.upload", "site_icon")),
+        (&Method::PUT, "/site-icons/{id}/activate") => {
+            Some(("media.site_icon.activate", "site_icon"))
+        }
+        (&Method::DELETE, "/site-icons/{id}") => Some(("media.site_icon.delete", "site_icon")),
+        (&Method::POST, "/news/sources") => Some(("news.source.create", "news_source")),
+        (&Method::PUT, "/news/sources/{id}") => Some(("news.source.update", "news_source")),
+        (&Method::DELETE, "/news/sources/{id}") => Some(("news.source.delete", "news_source")),
+        (&Method::POST, "/news/sources/{id}/test") => Some(("news.source.test", "news_source")),
+        (&Method::POST, "/news/sources/{id}/fetch") => Some(("news.source.fetch", "news_source")),
+        (&Method::POST, "/news/fetch-all") => Some(("news.fetch.run", "news_fetch")),
+        (&Method::POST, "/news/tasks") => Some(("news.task.create", "news_task")),
+        (&Method::PUT, "/news/tasks/{id}") => Some(("news.task.update", "news_task")),
+        (&Method::DELETE, "/news/tasks/{id}") => Some(("news.task.delete", "news_task")),
+        (&Method::PUT, "/news/tasks/{id}/toggle") => Some(("news.task.toggle", "news_task")),
+        (&Method::POST, "/news/tasks/{id}/run") => Some(("news.task.run_accepted", "news_task")),
+        (&Method::POST, "/backups") => Some(("backup.job_accepted", "backup_job")),
+        (&Method::POST, "/backups/upload") => Some(("backup.upload", "backup")),
+        (&Method::POST, "/backups/{name}/restore") => Some(("backup.restore_accepted", "backup")),
+        (&Method::DELETE, "/backups/{name}") => Some(("backup.delete", "backup")),
+        (&Method::GET, "/backups/{name}/download") => Some(("backup.download", "backup")),
+        (&Method::GET, "/logs/export") => Some(("logs.export", "event_log")),
+        _ => None,
+    }
+}
+
+fn resource_id_from_path(route: &str, path: &str) -> Option<String> {
+    if !route.contains("{id}") && !route.contains("{name}") {
+        return None;
+    }
+    let parts = path.trim_matches('/').split('/').collect::<Vec<_>>();
+    let suffix = route.rsplit('/').next().unwrap_or_default();
+    let index = if suffix.starts_with('{') {
+        parts.len().checked_sub(1)?
+    } else {
+        parts.len().checked_sub(2)?
+    };
+    parts
+        .get(index)
+        .map(|value| clean((*value).to_string(), 128))
 }
 
 pub async fn public_request_log(
@@ -308,16 +541,74 @@ pub fn spawn_cleanup(state: AppState) {
                     )
                     .await;
                 }
-                (access, normal, old, pv) => {
+                _ => {
                     tracing::error!(
-                        ?access,
-                        ?normal,
-                        ?old,
-                        ?pv,
+                        error_code = "database_error",
                         "event log retention cleanup failed"
                     );
+                    record(
+                        &state,
+                        NewEvent {
+                            category: CATEGORY_AUDIT,
+                            level: "error",
+                            event_type: "logs.retention_cleanup".into(),
+                            outcome: "failure",
+                            summary: "日志保留策略清理失败".into(),
+                            detail: Some(serde_json::json!({ "error_code": "database_error" })),
+                            ..Default::default()
+                        },
+                    )
+                    .await;
                 }
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_fields_are_cleaned_and_sensitive_detail_is_redacted() {
+        let model = into_model(NewEvent {
+            category: CATEGORY_AUDIT,
+            level: "info",
+            event_type: "settings.update\r\ninjected".into(),
+            outcome: "success",
+            summary: "safe\nsummary".into(),
+            detail: Some(serde_json::json!({
+                "changed_keys": ["site_title_zh"],
+                "database_url": "postgres://sentinel",
+                "nested": { "llm_api_key": "sentinel-key", "count": 2 },
+            })),
+            ..Default::default()
+        });
+        assert_eq!(model.event_type.unwrap(), "settings.update  injected");
+        assert_eq!(model.summary.unwrap(), "safe summary");
+        let detail = model.detail_json.unwrap().unwrap();
+        assert!(!detail.contains("postgres://sentinel"));
+        assert!(!detail.contains("sentinel-key"));
+        assert!(detail.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn semantic_routes_cover_sensitive_reads_and_mutations() {
+        assert_eq!(
+            semantic_admin_event(&Method::PUT, "/api/admin/posts/{id}"),
+            Some(("content.post.update", "post"))
+        );
+        assert_eq!(
+            semantic_admin_event(&Method::GET, "/api/admin/logs/export"),
+            Some(("logs.export", "event_log"))
+        );
+        assert_eq!(
+            resource_id_from_path(
+                "/api/admin/backups/{name}/download",
+                "/api/admin/backups/saltedblog_sqlite_20260721_000000.zip/download",
+            )
+            .as_deref(),
+            Some("saltedblog_sqlite_20260721_000000.zip")
+        );
+    }
 }

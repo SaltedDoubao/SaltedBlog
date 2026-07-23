@@ -14,6 +14,7 @@ pub struct Model {
     pub generation_time: Option<String>,
     pub publish_time: Option<String>,
     pub publish_mode: Option<String>,
+    pub retry_count: i32,
     pub last_scheduled_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

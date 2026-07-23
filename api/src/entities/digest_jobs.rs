@@ -34,4 +34,5 @@ pub const STATUS_SUCCESS: &str = "success";
 pub const STATUS_FAILED: &str = "failed";
 
 pub const TRIGGER_AUTO: &str = "auto";
+pub const TRIGGER_AUTO_RETRY: &str = "auto_retry";
 pub const TRIGGER_MANUAL: &str = "manual";

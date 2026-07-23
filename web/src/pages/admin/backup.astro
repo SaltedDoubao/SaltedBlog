@@ -9,6 +9,24 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     <input id="uploadInput" type="file" accept=".zip,application/zip" hidden />
   </div>
 
+  <div class="admin-panel auto-backup-panel">
+    <div class="admin-panel__header"><span>AUTOMATIC BACKUP / 自动备份</span></div>
+    <div class="admin-panel__body auto-backup-form">
+      <label class="auto-backup-toggle">
+        <input id="autoBackupEnabled" type="checkbox" />
+        <span>启用自动备份</span>
+      </label>
+      <div class="form-field">
+        <label class="label" for="autoBackupCron">Cron</label>
+        <input class="input mono" id="autoBackupCron" maxlength="128" value="0 0 * * *" />
+      </div>
+      <button class="btn btn--sm" id="saveAutoBackupBtn" type="button">保存备份计划</button>
+      <p class="auto-backup-hint" id="autoBackupHint">
+        默认每天 00:00；分钟字段必须是单个 0-59 数字，执行间隔不少于 1 小时。
+      </p>
+    </div>
+  </div>
+
   <div class="admin-panel">
     <div class="backup-status" id="jobStatus" hidden>
       <span class="mono" id="jobStatusText">任务进行中…</span>
@@ -40,6 +58,28 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     gap: 8px;
     flex-wrap: wrap;
   }
+  .auto-backup-panel {
+    margin-bottom: var(--space-5);
+  }
+  .auto-backup-form {
+    display: grid;
+    grid-template-columns: auto minmax(260px, 420px) auto;
+    gap: 12px;
+    align-items: end;
+  }
+  .auto-backup-toggle {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-height: 40px;
+    font-weight: 600;
+  }
+  .auto-backup-hint {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--text-3);
+    font-size: 12px;
+  }
   .backup-hint {
     margin: 0 0 16px;
     color: var(--text-3);
@@ -59,6 +99,14 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
   .backup-status[data-kind='ok'] {
     border-color: var(--accent, #f4f600);
   }
+  @media (max-width: 700px) {
+    .auto-backup-form {
+      grid-template-columns: 1fr;
+    }
+    .auto-backup-hint {
+      grid-column: 1;
+    }
+  }
 </style>
 
 <script>
@@ -77,6 +125,11 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     error_code?: string | null;
     backup_name?: string | null;
   }
+  interface AutoBackupSettings {
+    enabled: boolean;
+    cron: string;
+    timezone_offset_hours: number;
+  }
 
   const tbody = document.getElementById('backupBody')!;
   const createBtn = document.getElementById('createBtn') as HTMLButtonElement;
@@ -84,6 +137,9 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
   const uploadInput = document.getElementById('uploadInput') as HTMLInputElement;
   const jobStatus = document.getElementById('jobStatus')!;
   const jobStatusText = document.getElementById('jobStatusText')!;
+  const autoBackupEnabled = document.getElementById('autoBackupEnabled') as HTMLInputElement;
+  const autoBackupCron = document.getElementById('autoBackupCron') as HTMLInputElement;
+  const autoBackupHint = document.getElementById('autoBackupHint')!;
 
   let busy = false;
 
@@ -101,10 +157,6 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     jobStatusText.textContent = text;
     if (kind) jobStatus.dataset.kind = kind;
     else delete jobStatus.dataset.kind;
-  }
-
-  function hideStatus() {
-    jobStatus.hidden = true;
   }
 
   function formatSize(bytes: number): string {
@@ -172,6 +224,18 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
       if (job.status === 'done' || job.status === 'error') return job;
       showStatus(`任务进行中（${job.status}）…`);
       await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+
+  async function loadAutoBackup() {
+    try {
+      const settings = await adminFetch<AutoBackupSettings>('/api/admin/backups/auto-settings');
+      autoBackupEnabled.checked = settings.enabled;
+      autoBackupCron.value = settings.cron;
+      const sign = settings.timezone_offset_hours >= 0 ? '+' : '';
+      autoBackupHint.textContent = `按 UTC${sign}${settings.timezone_offset_hours} 解释；默认每天 00:00。分钟字段必须是单个 0-59 数字，执行间隔不少于 1 小时。`;
+    } catch (err) {
+      toast(`自动备份设置加载失败：${(err as Error).message}`, 'error');
     }
   }
 
@@ -293,6 +357,25 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
     const file = uploadInput.files?.[0];
     if (file) onUpload(file);
   });
+  document.getElementById('saveAutoBackupBtn')!.addEventListener('click', async (event) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    button.disabled = true;
+    try {
+      await adminFetch('/api/admin/backups/auto-settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          enabled: autoBackupEnabled.checked,
+          cron: autoBackupCron.value.trim(),
+        }),
+      });
+      toast('自动备份计划已保存');
+      await loadAutoBackup();
+    } catch (err) {
+      toast(`保存失败：${(err as Error).message}`, 'error');
+    } finally {
+      button.disabled = false;
+    }
+  });
 
-  load();
+  Promise.all([load(), loadAutoBackup()]);
 </script>

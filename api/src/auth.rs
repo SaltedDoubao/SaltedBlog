@@ -243,18 +243,30 @@ pub fn client_ip(headers: &HeaderMap, addr: Option<&SocketAddr>, cfg: &Config) -
     let peer = addr
         .map(SocketAddr::ip)
         .unwrap_or_else(|| IpAddr::from([127, 0, 0, 1]));
-    let trusted = cfg
-        .trusted_proxy_cidrs
-        .iter()
-        .any(|net| net.contains(&peer));
-    if trusted {
+    resolve_client_ip(headers, peer, &cfg.trusted_proxy_cidrs)
+}
+
+fn resolve_client_ip(
+    headers: &HeaderMap,
+    peer: IpAddr,
+    trusted_proxy_cidrs: &[ipnet::IpNet],
+) -> IpAddr {
+    if trusted_proxy_cidrs.iter().any(|net| net.contains(&peer)) {
+        // Caddy 会覆盖该头；只在直连 peer 是可信代理时接受，避免客户端伪造。
+        if let Some(ip) = headers
+            .get("x-real-ip")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse::<IpAddr>().ok())
+        {
+            return ip;
+        }
         if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
             let entries: Vec<_> = xff
                 .split(',')
                 .filter_map(|v| v.trim().parse::<IpAddr>().ok())
                 .collect();
             for ip in entries.into_iter().rev() {
-                if !cfg.trusted_proxy_cidrs.iter().any(|net| net.contains(&ip)) {
+                if !trusted_proxy_cidrs.iter().any(|net| net.contains(&ip)) {
                     return ip;
                 }
             }
@@ -416,7 +428,7 @@ pub async fn require_admin(
                     actor_user_id: Some(ctx.user_id),
                     actor_name: Some(ctx.username.clone()),
                     source_ip: Some(ip.clone()),
-                    summary: err.message.clone(),
+                    summary: "管理请求 Origin 或 CSRF 校验失败".into(),
                     ..Default::default()
                 },
             )
@@ -446,6 +458,18 @@ pub async fn require_admin(
             return Err(ApiError::forbidden("csrf_invalid", "invalid CSRF token"));
         }
     }
+    let request_id = request
+        .extensions()
+        .get::<crate::logging::RequestId>()
+        .map(|value| value.0.clone());
+    request
+        .extensions_mut()
+        .insert(crate::logging::EventContext {
+            actor_user_id: Some(ctx.user_id),
+            actor_name: Some(ctx.username.clone()),
+            source_ip: Some(ip),
+            request_id,
+        });
     request.extensions_mut().insert(ctx);
     Ok(next.run(request).await)
 }
@@ -463,6 +487,7 @@ pub fn require_step_up(ctx: &AdminContext) -> ApiResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::HeaderValue;
 
     #[test]
     fn encryption_roundtrip() {
@@ -481,6 +506,35 @@ mod tests {
         assert_eq!(
             recovery_hash("k", "ABCDE-12345"),
             recovery_hash("k", "abcde12345")
+        );
+    }
+
+    #[test]
+    fn trusted_docker_proxy_uses_overwritten_real_ip() {
+        let proxies = ["172.30.0.10/32".parse().unwrap()];
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", HeaderValue::from_static("10.8.0.42"));
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("198.51.100.9, 172.30.0.1"),
+        );
+
+        assert_eq!(
+            resolve_client_ip(&headers, "172.30.0.10".parse().unwrap(), &proxies),
+            "10.8.0.42".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn untrusted_peer_cannot_spoof_forwarded_ip() {
+        let proxies = ["172.30.0.10/32".parse().unwrap()];
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", HeaderValue::from_static("198.51.100.9"));
+        headers.insert("x-forwarded-for", HeaderValue::from_static("198.51.100.9"));
+
+        assert_eq!(
+            resolve_client_ip(&headers, "203.0.113.7".parse().unwrap(), &proxies),
+            "203.0.113.7".parse::<IpAddr>().unwrap()
         );
     }
 }

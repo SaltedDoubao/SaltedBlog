@@ -1,5 +1,8 @@
 services:
   caddy:
+    environment:
+      # cloudflared 是该模式下唯一允许提供客户端转发地址的上游代理。
+      UPSTREAM_PROXY_CIDRS: 172.30.0.40/32
     volumes:
       - ./Caddyfile.cloudflare:/etc/caddy/Caddyfile:ro
 
