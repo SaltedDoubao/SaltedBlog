@@ -89,7 +89,7 @@ npm run dev
 git clone https://github.com/SaltedDoubao/SaltedBlog.git && cd SaltedBlog
 cp deploy/.env.example deploy/.env
 # 按 deploy/secrets/README.md 创建生产密钥，并配置域名、CIDR 与已发布版本
-# SALTEDBLOG_IMAGE_TAG=v0.1.5
+# SALTEDBLOG_IMAGE_TAG=v0.1.6
 docker compose --project-directory ./deploy --env-file ./deploy/.env \
   -f ./deploy/docker-compose.yml config --quiet
 docker compose --project-directory ./deploy --env-file ./deploy/.env \
